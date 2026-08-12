@@ -40,6 +40,28 @@ type LayerId =
 
 type ThemeKey = "verdant" | "obsidian" | "arcane" | "ember";
 type ExportFormat = "png" | "jpg";
+type TemplateKey = "ridge" | "bevel" | "filigree" | "forge" | "minimal";
+
+type FrameTemplate = {
+  id: TemplateKey;
+  name: string;
+  metal: string;
+  metalLight: string;
+  metalDeep: string;
+  borderStyle: string;
+  radius: string;
+  weight: number;
+  crown: boolean;
+  corners: boolean;
+};
+
+const frameTemplates: FrameTemplate[] = [
+  { id: "ridge", name: "Verdant Ridge", metal: "#766036", metalLight: "#a18348", metalDeep: "#312719", borderStyle: "ridge", radius: "15px", weight: 74, crown: true, corners: true },
+  { id: "bevel", name: "Obsidian Bevel", metal: "#5f646b", metalLight: "#9aa1aa", metalDeep: "#1c1f23", borderStyle: "double", radius: "10px", weight: 62, crown: false, corners: true },
+  { id: "filigree", name: "Arcane Filigree", metal: "#6b57a8", metalLight: "#b9a4f5", metalDeep: "#241c3a", borderStyle: "groove", radius: "22px", weight: 88, crown: true, corners: true },
+  { id: "forge", name: "Ember Forge", metal: "#8a4526", metalLight: "#e09055", metalDeep: "#2d150c", borderStyle: "ridge", radius: "8px", weight: 96, crown: true, corners: false },
+  { id: "minimal", name: "Clean Minimal", metal: "#3c433d", metalLight: "#5c655d", metalDeep: "#141815", borderStyle: "solid", radius: "18px", weight: 30, crown: false, corners: false },
+];
 
 type Layer = {
   id: LayerId;
@@ -148,9 +170,12 @@ function App() {
   const [showMarkers, setShowMarkers] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [tool, setTool] = useState<"select" | "hand">("select");
+  const [templateIndex, setTemplateIndex] = useState(0);
 
   const selected = useMemo(() => layers.find((layer) => layer.id === selectedLayer) ?? layers[0], [selectedLayer]);
   const theme = themes[themeKey];
+  const template = frameTemplates[templateIndex];
+  const currentTemplateName = template.name;
 
   const selectLayer = (id: LayerId) => {
     const next = layers.find((layer) => layer.id === id);
@@ -182,6 +207,14 @@ function App() {
   const changeTheme = (key: ThemeKey) => {
     setThemeKey(key);
     setAccent(themes[key].accent);
+  };
+
+  const handleTemplateChange = (direction: "prev" | "next") => {
+    const total = frameTemplates.length;
+    const next = direction === "next" ? (templateIndex + 1) % total : (templateIndex - 1 + total) % total;
+    setTemplateIndex(next);
+    setFrameWeight(frameTemplates[next].weight);
+    flash(`${frameTemplates[next].name} template applied`);
   };
 
   const exportCard = async () => {
@@ -227,6 +260,7 @@ function App() {
     setArtX(50);
     setArtY(50);
     setFrameWeight(74);
+    setTemplateIndex(0);
     setArtUrl("/images/verdant-colossus.jpg");
     setBorderUrl(null);
     setFrameUrl(null);
@@ -247,6 +281,11 @@ function App() {
     "--accent": accent,
     "--accent-glow": theme.glow,
     "--frame-weight": `${frameWeight / 100}`,
+    "--frame-metal": template.metal,
+    "--frame-metal-light": template.metalLight,
+    "--frame-metal-deep": template.metalDeep,
+    "--frame-border-style": template.borderStyle,
+    "--frame-radius": template.radius,
   } as CSSProperties;
 
   return (
@@ -379,8 +418,12 @@ function App() {
                 </section>
 
                 <div className={`ornate-frame ${selectedLayer === "frame" ? "is-editing" : ""}`} style={layerStyle("frame")} onClick={() => selectLayer("frame")}>
-                  <div className="corner corner-tl" /><div className="corner corner-tr" /><div className="corner corner-bl" /><div className="corner corner-br" />
-                  <div className="top-crown"><i /><b /><i /></div>
+                  {template.corners && (
+                    <>
+                      <div className="corner corner-tl" /><div className="corner corner-tr" /><div className="corner corner-bl" /><div className="corner corner-br" />
+                    </>
+                  )}
+                  {template.crown && <div className="top-crown"><i /><b /><i /></div>}
                 </div>
                 {borderUrl && <img className="uploaded-border" src={borderUrl} alt="Uploaded border artwork" style={layerStyle("frame")} />}
                 {frameUrl && <img className="uploaded-frame" src={frameUrl} alt="Uploaded frame overlay" style={layerStyle("frame")} />}
@@ -441,7 +484,22 @@ function App() {
               {selectedLayer === "faction" && <p className="property-note">The faction seal uses your accent color and currently selected frame metal.</p>}
               {selectedLayer === "frame" && <p className="property-note">Build a custom edge treatment with transparent PNG border and frame layers.</p>}
             </section>
-
+            {selectedLayer === "frame" && (
+              <section className="property-section">
+                <div className="section-label">
+                  <span>TEMPLATE</span>
+                  <button aria-label="Reset template" onClick={() => { setTemplateIndex(0); setFrameWeight(frameTemplates[0].weight); }}><RotateCcw size={13} /></button>
+                </div>
+                <div className="template-selector">
+                  <button aria-label="Previous template" onClick={() => handleTemplateChange("prev")}><ChevronLeft size={16} /></button>
+                  <div className="template-name">
+                    <strong>{currentTemplateName}</strong>
+                    <small>{templateIndex + 1} / {frameTemplates.length}</small>
+                  </div>
+                  <button aria-label="Next template" onClick={() => handleTemplateChange("next")}><ChevronRight size={16} /></button>
+                </div>
+              </section>
+            )}
             <section className="property-section">
               <div className="section-label"><span>COLOR SYSTEM</span><button aria-label="Color help"><CircleHelp size={13} /></button></div>
               <div className="swatch-row">
