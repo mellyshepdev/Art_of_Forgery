@@ -1,5 +1,7 @@
-import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { toJpeg, toPng } from "html-to-image";
+import { cardTemplates, templateSrc } from "./data/cardTemplates";
+import { cardSlots as initialCardSlots, slotStyle, type CardSlot } from "./data/cardSlots";
 import {
   Check,
   ChevronDown,
@@ -40,28 +42,6 @@ type LayerId =
 
 type ThemeKey = "verdant" | "obsidian" | "arcane" | "ember";
 type ExportFormat = "png" | "jpg";
-type TemplateKey = "ridge" | "bevel" | "filigree" | "forge" | "minimal";
-
-type FrameTemplate = {
-  id: TemplateKey;
-  name: string;
-  metal: string;
-  metalLight: string;
-  metalDeep: string;
-  borderStyle: string;
-  radius: string;
-  weight: number;
-  crown: boolean;
-  corners: boolean;
-};
-
-const frameTemplates: FrameTemplate[] = [
-  { id: "ridge", name: "Verdant Ridge", metal: "#766036", metalLight: "#a18348", metalDeep: "#312719", borderStyle: "ridge", radius: "15px", weight: 74, crown: true, corners: true },
-  { id: "bevel", name: "Obsidian Bevel", metal: "#5f646b", metalLight: "#9aa1aa", metalDeep: "#1c1f23", borderStyle: "double", radius: "10px", weight: 62, crown: false, corners: true },
-  { id: "filigree", name: "Arcane Filigree", metal: "#6b57a8", metalLight: "#b9a4f5", metalDeep: "#241c3a", borderStyle: "groove", radius: "22px", weight: 88, crown: true, corners: true },
-  { id: "forge", name: "Ember Forge", metal: "#8a4526", metalLight: "#e09055", metalDeep: "#2d150c", borderStyle: "ridge", radius: "8px", weight: 96, crown: true, corners: false },
-  { id: "minimal", name: "Clean Minimal", metal: "#3c433d", metalLight: "#5c655d", metalDeep: "#141815", borderStyle: "solid", radius: "18px", weight: 30, crown: false, corners: false },
-];
 
 type Layer = {
   id: LayerId;
@@ -150,17 +130,17 @@ function App() {
   const [visibility, setVisibility] = useState(defaultVisibility);
   const [themeKey, setThemeKey] = useState<ThemeKey>("verdant");
   const [accent, setAccent] = useState(themes.verdant.accent);
-  const [cardName, setCardName] = useState("ORYN, WARDEN OF THE WILD");
-  const [cardSubtitle, setCardSubtitle] = useState("SENTINEL OF THE OLD GROVE");
-  const [health, setHealth] = useState("120");
-  const [rank, setRank] = useState("V");
+  const [cardName, setCardName] = useState("");
+  const [cardSubtitle, setCardSubtitle] = useState("");
+  const [health, setHealth] = useState("");
+  const [rank, setRank] = useState("");
   const [zoom, setZoom] = useState(78);
   const [artScale, setArtScale] = useState(108);
   const [artX, setArtX] = useState(50);
   const [artY, setArtY] = useState(50);
   const [frameWeight, setFrameWeight] = useState(74);
   const [layerOpacity, setLayerOpacity] = useState(defaultOpacity);
-  const [artUrl, setArtUrl] = useState("/images/verdant-colossus.jpg");
+  const [artUrl, setArtUrl] = useState<string | null>(null);
   const [borderUrl, setBorderUrl] = useState<string | null>(null);
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [graphicUrl, setGraphicUrl] = useState<string | null>(null);
@@ -169,24 +149,118 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
-  const [tool, setTool] = useState<"select" | "hand">("select");
+  const [tool, setTool] = useState<"select" | "hand" | "edit-slots">("select");
   const [templateIndex, setTemplateIndex] = useState(0);
+  const [showGuides, setShowGuides] = useState(true);
+  const [slotFill, setSlotFill] = useState<Record<number, string>>({});
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [zoomLocked, setZoomLocked] = useState(false);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [slots, setSlots] = useState<CardSlot[]>(initialCardSlots);
+  const dragRef = useRef<{ id: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
 
   const selected = useMemo(() => layers.find((layer) => layer.id === selectedLayer) ?? layers[0], [selectedLayer]);
   const theme = themes[themeKey];
-  const template = frameTemplates[templateIndex];
+  const template = cardTemplates[templateIndex];
   const currentTemplateName = template.name;
 
   const selectLayer = (id: LayerId) => {
     const next = layers.find((layer) => layer.id === id);
     setSelectedLayer(id);
-    if (next) setZoom(id === "frame" ? 78 : id === "art" ? 86 : 94);
+    // While the zoom is locked to a slot, changing layer must not yank the view.
+    if (next && !zoomLocked) setZoom(id === "frame" ? 78 : id === "art" ? 86 : 94);
   };
 
   const flash = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 2200);
   };
+
+  /** Click a slot: select it, zoom to 350% centred on it (if not editing), and lock the zoom */
+  const pickSlot = (id: number) => {
+    const slot = slots.find((s) => s.id === id);
+    if (!slot) return;
+    setSelectedSlot(id);
+    if (tool !== "edit-slots") {
+      setZoom(350);
+      setZoomLocked(true);
+      setPan({ x: 0, y: 0 });
+      flash(`${slot.id}. ${slot.name} - drag to move around`);
+    }
+  };
+
+  const exitZoom = () => {
+    setZoomLocked(false);
+    setSelectedSlot(null);
+    setZoom(78);
+    setPan({ x: 0, y: 0 });
+  };
+
+  /* Grab-to-pan. PointerEvents means mouse, pen and touch all take the same
+     path, and capture keeps the drag alive if the cursor leaves the stage. */
+  const canPan = zoomLocked || tool === "hand";
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!canPan || event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: pan.x,
+      originY: pan.y,
+    };
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const sDrag = slotDragRef.current;
+    if (sDrag && sDrag.id === event.pointerId) {
+      event.preventDefault();
+      // Zoom factor applies to movement
+      const z = zoom / 100;
+      const dx = (event.clientX - sDrag.startX) / z;
+      const dy = (event.clientY - sDrag.startY) / z;
+      // 744x1056 are the card base dimensions
+      const deltaPercentX = dx / 744;
+      const deltaPercentY = dy / 1056;
+      setSlots(slots.map(s => s.id === sDrag.slotId ? { ...s, x: sDrag.startSlotX + deltaPercentX, y: sDrag.startSlotY + deltaPercentY } : s));
+      return;
+    }
+
+    const drag = dragRef.current;
+    if (!drag || drag.id !== event.pointerId) return;
+    event.preventDefault();
+    setPan({
+      x: drag.originX + (event.clientX - drag.startX),
+      y: drag.originY + (event.clientY - drag.startY),
+    });
+  };
+
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const sDrag = slotDragRef.current;
+    if (sDrag && sDrag.id === event.pointerId) {
+      slotDragRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+
+    const drag = dragRef.current;
+    if (!drag || drag.id !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  /** Zoom origin follows the chosen slot, so 200% lands on what you clicked. */
+  const zoomOrigin = useMemo(() => {
+    const slot = slots.find((s) => s.id === selectedSlot);
+    if (!slot) return selected.origin;
+    return `${(slot.x + slot.w / 2) * 100}% ${(slot.y + slot.h / 2) * 100}%`;
+  }, [selectedSlot, selected.origin, slots]);
 
   const readUpload = (event: ChangeEvent<HTMLInputElement>, setter: (value: string) => void, message: string) => {
     const file = event.target.files?.[0];
@@ -210,11 +284,10 @@ function App() {
   };
 
   const handleTemplateChange = (direction: "prev" | "next") => {
-    const total = frameTemplates.length;
+    const total = cardTemplates.length;
     const next = direction === "next" ? (templateIndex + 1) % total : (templateIndex - 1 + total) % total;
     setTemplateIndex(next);
-    setFrameWeight(frameTemplates[next].weight);
-    flash(`${frameTemplates[next].name} template applied`);
+    flash(`${cardTemplates[next].name} applied`);
   };
 
   const exportCard = async () => {
@@ -252,16 +325,17 @@ function App() {
   const resetCard = () => {
     setThemeKey("verdant");
     setAccent(themes.verdant.accent);
-    setCardName("ORYN, WARDEN OF THE WILD");
-    setCardSubtitle("SENTINEL OF THE OLD GROVE");
-    setHealth("120");
-    setRank("V");
+    setCardName("");
+    setCardSubtitle("");
+    setHealth("");
+    setRank("");
     setArtScale(108);
     setArtX(50);
     setArtY(50);
     setFrameWeight(74);
     setTemplateIndex(0);
-    setArtUrl("/images/verdant-colossus.jpg");
+    setArtUrl(null);
+    setSlotFill({});
     setBorderUrl(null);
     setFrameUrl(null);
     setGraphicUrl(null);
@@ -281,11 +355,6 @@ function App() {
     "--accent": accent,
     "--accent-glow": theme.glow,
     "--frame-weight": `${frameWeight / 100}`,
-    "--frame-metal": template.metal,
-    "--frame-metal-light": template.metalLight,
-    "--frame-metal-deep": template.metalDeep,
-    "--frame-border-style": template.borderStyle,
-    "--frame-radius": template.radius,
   } as CSSProperties;
 
   return (
@@ -297,7 +366,7 @@ function App() {
         </div>
         <div className="project-crumbs">
           <button><ChevronLeft size={16} /> Projects</button><i />
-          <span>Oryn, Warden of the Wild</span><small>Draft saved</small>
+          <span>{cardName || "Untitled card"}</span><small>{template.name}</small>
         </div>
         <div className="top-actions">
           <ToolButton label="Undo"><Undo2 size={17} /></ToolButton>
@@ -326,27 +395,17 @@ function App() {
 
       <div className="workspace">
         <aside className="layers-panel">
-          <div className="panel-heading"><span>LAYERS</span><button aria-label="Layer options"><Layers3 size={15} /></button></div>
+          <div className="panel-heading"><span>AREAS (SLOTS)</span><button onClick={() => { console.log(JSON.stringify(slots, null, 2)); flash("Slots JSON logged to console!"); }}>Export JSON</button></div>
           <div className="layer-stack">
-            {layers.map((layer) => (
-              <button key={layer.id} className={`layer-row ${selectedLayer === layer.id ? "is-active" : ""}`} onClick={() => selectLayer(layer.id)}>
-                <span className="layer-number">{layer.number}</span>
-                <span className="layer-copy"><strong>{layer.label}</strong><small>{layer.helper}</small></span>
-                <span
-                  className="visibility-toggle"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${visibility[layer.id] ? "Hide" : "Show"} ${layer.label}`}
-                  onClick={(event) => { event.stopPropagation(); toggleVisibility(layer.id); }}
-                  onKeyDown={(event) => { if (event.key === "Enter") toggleVisibility(layer.id); }}
-                >
-                  {visibility[layer.id] ? <Eye size={14} /> : <EyeOff size={14} />}
-                </span>
+            {slots.map((slot) => (
+              <button key={slot.id} className={`layer-row ${selectedSlot === slot.id ? "is-active" : ""}`} onClick={() => pickSlot(slot.id)}>
+                <span className="layer-number">{slot.id.toString().padStart(2, '0')}</span>
+                <span className="layer-copy"><strong>{slot.name}</strong><small>{slot.shape} - {slot.kind}</small></span>
               </button>
             ))}
           </div>
           <div className="layers-footer">
-            <button onClick={() => flash("Blank graphic layer added")}><Plus size={15} /> Add layer</button>
+            <button onClick={() => flash("Background layer feature coming next!")}><Plus size={15} /> Add Layer 1 Background</button>
             <button aria-label="Help"><CircleHelp size={16} /></button>
           </div>
         </aside>
@@ -356,6 +415,7 @@ function App() {
             <div className="tool-group">
               <ToolButton label="Select tool" active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={16} /></ToolButton>
               <ToolButton label="Pan tool" active={tool === "hand"} onClick={() => setTool("hand")}><Hand size={16} /></ToolButton>
+              <ToolButton label="Edit Slots" active={tool === "edit-slots"} onClick={() => { setTool("edit-slots"); exitZoom(); }}><Frame size={16} /></ToolButton>
             </div>
             <div className="zoom-control">
               <button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(58, value - 5))}><Minus size={14} /></button>
@@ -363,83 +423,74 @@ function App() {
               <button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(200, value + 5))}><Plus size={14} /></button>
             </div>
             <div className="tool-group canvas-options">
+              <ToolButton label={showGuides ? "Hide slot guides" : "Show slot guides"} active={showGuides} onClick={() => setShowGuides((value) => !value)}><Frame size={16} /></ToolButton>
               <ToolButton label="Show numbered edit points" active={showMarkers} onClick={() => setShowMarkers((value) => !value)}><ZoomIn size={16} /></ToolButton>
-              <ToolButton label="Fit to canvas" onClick={() => setZoom(78)}><Maximize2 size={16} /></ToolButton>
+              <ToolButton label={zoomLocked ? "Exit zoom" : "Fit to canvas"} onClick={exitZoom}><Maximize2 size={16} /></ToolButton>
             </div>
           </div>
 
-          <div className={`card-stage tool-${tool}`}>
+          <div
+            className={`card-stage tool-${tool} ${canPan ? "can-pan" : ""} ${dragRef.current ? "is-panning" : ""}`}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          >
             <div className="stage-grid" />
-            <div className="card-transform" style={{ transform: `scale(${zoom / 100})`, transformOrigin: selected.origin }}>
-              <div className="game-card" ref={cardRef} style={cardVariables}>
-                <div className="card-backdrop" /><div className="inner-keyline" />
+            <div
+              className="card-transform"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
+                transformOrigin: zoomOrigin,
+              }}
+            >
+              <div className={`game-card ${showGuides ? "show-guides" : ""}`} ref={cardRef} style={cardVariables}>
+                <img className="template-plate" src={templateSrc(template)} alt={`${template.name} card frame`} />
 
-                <section className={`card-art section-target ${selectedLayer === "art" ? "is-editing" : ""}`} style={layerStyle("art")} onClick={() => selectLayer("art")}>
-                  <img src={artUrl} alt="Ancient forest guardian card artwork" style={{ transform: `translate(${artX - 50}%, ${artY - 50}%) scale(${artScale / 100})` }} />
-                  <div className="art-vignette" />
-                </section>
-
-                <section className={`identity-banner section-target ${selectedLayer === "identity" ? "is-editing" : ""}`} style={layerStyle("identity")} onClick={() => selectLayer("identity")}>
-                  <div className="banner-wing left" /><div className="banner-wing right" />
-                  <p>{cardName}</p><span>{cardSubtitle}</span>
-                </section>
-
-                <section className={`health-crest stat-crest section-target ${selectedLayer === "health" ? "is-editing" : ""}`} style={layerStyle("health")} onClick={() => selectLayer("health")}>
-                  <div className="crest-points" /><div className="crest-core"><strong>{health}</strong><span>HP</span></div>
-                </section>
-
-                <section className={`rank-crest stat-crest section-target ${selectedLayer === "rank" ? "is-editing" : ""}`} style={layerStyle("rank")} onClick={() => selectLayer("rank")}>
-                  <div className="crest-points" /><div className="crest-core"><strong>{rank}</strong><span>RANK</span></div>
-                </section>
-
-                <div className="side-rail rail-left"><span>GROVE</span><i /><span>WARDEN</span></div>
-                <div className="side-rail rail-right"><span>ANCIENT</span><i /><span>ROOT</span></div>
+                {artUrl && (
+                  <div className="slot-art" style={slotStyle(slots[4])}>
+                    <img src={artUrl} alt="Card artwork" style={{ transform: `translate(${artX - 50}%, ${artY - 50}%) scale(${artScale / 100})` }} />
+                  </div>
+                )}
                 {graphicUrl && <img className="custom-graphic" src={graphicUrl} alt="Custom border graphic" />}
 
-                <section className={`ability-panel section-target ${selectedLayer === "abilities" ? "is-editing" : ""}`} style={layerStyle("abilities")} onClick={() => selectLayer("abilities")}>
-                  {abilities.map((ability) => (
-                    <div className="ability-row" key={ability.title}>
-                      <div className="ability-icon"><span>{ability.glyph}</span></div>
-                      <div className="ability-copy"><p><small>{ability.tag}</small> {ability.title}</p><span>{ability.detail}</span></div>
-                      <div className="ability-cost">{ability.cost}</div>
-                    </div>
-                  ))}
-                </section>
+                {slots.map((slot) => {
+                  const fill = slotFill[slot.id];
+                  const text =
+                    slot.id === 1 ? health :
+                    slot.id === 2 ? cardName :
+                    slot.id === 3 ? rank : "";
+                  return (
+                    <button
+                      key={slot.id}
+                      className={`slot slot-${slot.shape} ${selectedSlot === slot.id ? "is-selected" : ""} ${tool === "edit-slots" ? "is-editable" : ""}`}
+                      style={{ ...slotStyle(slot), background: fill ?? undefined, cursor: tool === "edit-slots" ? "move" : "pointer" }}
+                      onClick={(event) => { event.stopPropagation(); pickSlot(slot.id); }}
+                      onPointerDown={(event) => {
+                        if (tool === "edit-slots" && event.button === 0) {
+                          event.stopPropagation();
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                          slotDragRef.current = {
+                            id: event.pointerId,
+                            slotId: slot.id,
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            startSlotX: slot.x,
+                            startSlotY: slot.y,
+                          };
+                          setSelectedSlot(slot.id);
+                        }
+                      }}
+                      aria-label={`Slot ${slot.id}: ${slot.name}`}
+                    >
+                      {text && <span className="slot-text">{text}</span>}
+                      {showGuides && <i className="slot-num" data-export-hide="true">{slot.id}</i>}
+                    </button>
+                  );
+                })}
 
-                <div className="companion-label"><span /> COMPANIONS <span /></div>
-                <section className={`companion companion-left section-target ${selectedLayer === "companion-left" ? "is-editing" : ""}`} style={layerStyle("companion-left")} onClick={() => selectLayer("companion-left")}>
-                  <div className="companion-image companion-stag" /><strong>BRIAR STAG</strong><small>MOUNT / THORNBURST</small>
-                </section>
-                <section className={`faction-seal section-target ${selectedLayer === "faction" ? "is-editing" : ""}`} style={layerStyle("faction")} onClick={() => selectLayer("faction")}>
-                  <div className="leaf-glyph"><i /><i /><i /></div><span>FACTION</span><strong>THE VERDANT OATH</strong><small>NATURE / GUARDIAN</small>
-                </section>
-                <section className={`companion companion-right section-target ${selectedLayer === "companion-right" ? "is-editing" : ""}`} style={layerStyle("companion-right")} onClick={() => selectLayer("companion-right")}>
-                  <div className="companion-image companion-owl" /><strong>DUSK OWL</strong><small>FLYING / FORESIGHT</small>
-                </section>
-
-                <div className={`ornate-frame ${selectedLayer === "frame" ? "is-editing" : ""}`} style={layerStyle("frame")} onClick={() => selectLayer("frame")}>
-                  {template.corners && (
-                    <>
-                      <div className="corner corner-tl" /><div className="corner corner-tr" /><div className="corner corner-bl" /><div className="corner corner-br" />
-                    </>
-                  )}
-                  {template.crown && <div className="top-crown"><i /><b /><i /></div>}
-                </div>
-                {borderUrl && <img className="uploaded-border" src={borderUrl} alt="Uploaded border artwork" style={layerStyle("frame")} />}
-                {frameUrl && <img className="uploaded-frame" src={frameUrl} alt="Uploaded frame overlay" style={layerStyle("frame")} />}
-
-                {showMarkers && (
-                  <>
-                    <CardMarker number="1" className="marker-art" selected={selectedLayer === "art"} onClick={() => selectLayer("art")} />
-                    <CardMarker number="2" className="marker-identity" selected={selectedLayer === "identity"} onClick={() => selectLayer("identity")} />
-                    <CardMarker number="3" className="marker-health" selected={selectedLayer === "health"} onClick={() => selectLayer("health")} />
-                    <CardMarker number="4" className="marker-rank" selected={selectedLayer === "rank"} onClick={() => selectLayer("rank")} />
-                    <CardMarker number="5" className="marker-abilities" selected={selectedLayer === "abilities"} onClick={() => selectLayer("abilities")} />
-                    <CardMarker number="6" className="marker-companion-left" selected={selectedLayer === "companion-left"} onClick={() => selectLayer("companion-left")} />
-                    <CardMarker number="7" className="marker-faction" selected={selectedLayer === "faction"} onClick={() => selectLayer("faction")} />
-                    <CardMarker number="8" className="marker-companion-right" selected={selectedLayer === "companion-right"} onClick={() => selectLayer("companion-right")} />
-                    <CardMarker number="9" className="marker-frame" selected={selectedLayer === "frame"} onClick={() => selectLayer("frame")} />
-                  </>
+                {cardSubtitle && (
+                  <div className="slot-subtitle" style={slotStyle(slots[1])}>{cardSubtitle}</div>
                 )}
               </div>
             </div>
@@ -448,10 +499,49 @@ function App() {
         </main>
 
         <aside className="properties-panel">
-          <div className="properties-title">
-            <div><span>{selected.number}</span><p><strong>{selected.label}</strong><small>{selected.helper}</small></p></div>
-            <button aria-label="Close properties" onClick={() => selectLayer("art")}><X size={16} /></button>
-          </div>
+          {selectedSlot ? (() => {
+            const slot = slots.find(s => s.id === selectedSlot);
+            if (!slot) return null;
+            return (
+              <>
+                <div className="properties-title">
+                  <div><span>{slot.id}</span><p><strong>{slot.name}</strong><small>{slot.kind}</small></p></div>
+                  <button aria-label="Close properties" onClick={() => setSelectedSlot(null)}><X size={16} /></button>
+                </div>
+                <div className="property-scroll">
+                  <section className="property-section">
+                    <div className="section-label"><span>SLOT PROPERTIES</span></div>
+                    
+                    <label className="field-label">Shape</label>
+                    <select 
+                      className="field-input"
+                      value={slot.shape} 
+                      onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, shape: e.target.value as any } : s))}
+                    >
+                      <option value="circle">Circle</option>
+                      <option value="rect">Rectangle</option>
+                    </select>
+
+                    <label className="field-label">X (%)</label>
+                    <input className="field-input" type="number" step="0.001" value={slot.x} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, x: parseFloat(e.target.value) } : s))} />
+                    
+                    <label className="field-label">Y (%)</label>
+                    <input className="field-input" type="number" step="0.001" value={slot.y} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, y: parseFloat(e.target.value) } : s))} />
+                    
+                    <label className="field-label">Width (%)</label>
+                    <input className="field-input" type="number" step="0.001" value={slot.w} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, w: parseFloat(e.target.value) } : s))} />
+                    
+                    <label className="field-label">Height (%)</label>
+                    <input className="field-input" type="number" step="0.001" value={slot.h} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, h: parseFloat(e.target.value) } : s))} />
+                  </section>
+                </div>
+              </>
+            );
+          })() : (
+            <div className="properties-title">
+              <div><span>-</span><p><strong>Select a slot</strong></p></div>
+            </div>
+          )}
 
           <div className="property-scroll">
             <section className="property-section">
@@ -484,22 +574,33 @@ function App() {
               {selectedLayer === "faction" && <p className="property-note">The faction seal uses your accent color and currently selected frame metal.</p>}
               {selectedLayer === "frame" && <p className="property-note">Build a custom edge treatment with transparent PNG border and frame layers.</p>}
             </section>
-            {selectedLayer === "frame" && (
-              <section className="property-section">
-                <div className="section-label">
-                  <span>TEMPLATE</span>
-                  <button aria-label="Reset template" onClick={() => { setTemplateIndex(0); setFrameWeight(frameTemplates[0].weight); }}><RotateCcw size={13} /></button>
+            <section className="property-section">
+              <div className="section-label">
+                <span>TEMPLATE</span>
+                <button aria-label="Reset template" onClick={() => setTemplateIndex(0)}><RotateCcw size={13} /></button>
+              </div>
+              <div className="template-selector">
+                <button aria-label="Previous template" onClick={() => handleTemplateChange("prev")}><ChevronLeft size={16} /></button>
+                <div className="template-name">
+                  <strong>{currentTemplateName}</strong>
+                  <small>{templateIndex + 1} / {cardTemplates.length}</small>
                 </div>
-                <div className="template-selector">
-                  <button aria-label="Previous template" onClick={() => handleTemplateChange("prev")}><ChevronLeft size={16} /></button>
-                  <div className="template-name">
-                    <strong>{currentTemplateName}</strong>
-                    <small>{templateIndex + 1} / {frameTemplates.length}</small>
-                  </div>
-                  <button aria-label="Next template" onClick={() => handleTemplateChange("next")}><ChevronRight size={16} /></button>
-                </div>
-              </section>
-            )}
+                <button aria-label="Next template" onClick={() => handleTemplateChange("next")}><ChevronRight size={16} /></button>
+              </div>
+              <div className="template-grid">
+                {cardTemplates.map((item, index) => (
+                  <button
+                    key={item.id}
+                    className={`template-chip ${index === templateIndex ? "is-active" : ""}`}
+                    onClick={() => { setTemplateIndex(index); flash(`${item.name} applied`); }}
+                    title={item.name}
+                    aria-label={item.name}
+                  >
+                    <img src={templateSrc(item)} alt="" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            </section>
             <section className="property-section">
               <div className="section-label"><span>COLOR SYSTEM</span><button aria-label="Color help"><CircleHelp size={13} /></button></div>
               <div className="swatch-row">

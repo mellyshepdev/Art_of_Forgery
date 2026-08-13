@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "clsx": "2.1.1",
+    "fabric": "^7.4.0",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.31.0",
     "react": "19.2.6",

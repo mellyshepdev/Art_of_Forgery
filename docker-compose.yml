@@ -5,4 +5,17 @@ services:
       dockerfile: Dockerfile
     container_name: forge
     restart: unless-stopped
-    network_mode: host
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.forge.rule=Host(`forge.theofficialblacksheepco.online`)"
+      - "traefik.http.routers.forge.entrypoints=websecure"
+      - "traefik.http.routers.forge.tls=true"
+      - "traefik.http.routers.forge.tls.certresolver=myresolver"
+      - "traefik.http.services.forge.loadbalancer.server.port=80"
+    networks:
+      - traefik_proxy
+
+networks:
+  traefik_proxy:
+    external: true
+

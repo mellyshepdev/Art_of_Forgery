@@ -501,3 +501,91 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
 .template-name { display: grid; justify-items: center; gap: 1px; padding: 0 6px; text-align: center; }
 .template-name strong { overflow: hidden; color: #d6ded7; font-size: 12px; letter-spacing: 0.04em; text-overflow: ellipsis; white-space: nowrap; }
 .template-name small { color: #6e7771; font-size: 10px; letter-spacing: 0.08em; }
+
+/* ── Illustrated template + 19-slot grid ─────────────────────────────── */
+
+.game-card { position: relative; overflow: hidden; container-type: inline-size; }
+
+.template-plate {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: fill;
+  display: block;
+  pointer-events: none;
+}
+
+/* Slot 5 artwork sits above the frame plate but below the slot buttons. */
+.slot-art {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.slot-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.slot {
+  position: absolute;
+  margin: 0; padding: 0;
+  border: 1.5px dotted transparent;
+  background: transparent;
+  cursor: pointer;
+  display: grid; place-items: center;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.slot-circle { border-radius: 50%; }
+.slot-rect   { border-radius: 3px; }
+
+.show-guides .slot { border-color: rgba(255, 60, 90, .78); }
+.slot:hover        { border-color: rgba(255, 60, 90, .95); }
+.slot.is-selected  { border-style: solid; border-color: #ff3c5a; box-shadow: 0 0 0 2px rgba(255, 60, 90, .28); }
+
+.slot-num {
+  position: absolute;
+  font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-style: normal;
+  color: #ff3c5a;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.slot-text {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(9px, 2.1cqw, 20px);
+  font-weight: 700;
+  color: #16130d;
+  text-align: center;
+  line-height: 1.15;
+  padding: 0 4%;
+  overflow: hidden;
+}
+
+.slot-subtitle {
+  position: absolute;
+  display: grid; place-items: end center;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(7px, 1.4cqw, 13px);
+  letter-spacing: .06em;
+  color: #4a4034;
+  pointer-events: none;
+}
+
+/* Grab-to-pan while zoomed */
+.card-stage.can-pan { cursor: grab; }
+.card-stage.can-pan:active, .card-stage.is-panning { cursor: grabbing; }
+.card-transform { will-change: transform; }
+
+/* Template picker */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 11px;
+}
+.template-chip {
+  padding: 0; border: 1px solid #303632; border-radius: 3px;
+  background: #141715; cursor: pointer; overflow: hidden; line-height: 0;
+  aspect-ratio: 848 / 1264;
+}
+.template-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.template-chip.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.template-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
