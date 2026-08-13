@@ -1,3 +1,4 @@
+import "./App.studio.css";
 import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { toJpeg, toPng } from "html-to-image";
 import {
