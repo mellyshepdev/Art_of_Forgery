@@ -539,6 +539,55 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
    thing you're looking at rather than the button. */
 .properties-title button.is-muted { color: #ff3c5a; opacity: 1; }
 
+/* Fill-colour picker. Palette follows app.studio.css so the wheel and the
+   controls around it read as one panel rather than two bolted together. */
+.section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.inline-eye {
+  display: inline-grid;
+  place-items: center;
+  width: 22px; height: 22px;
+  padding: 0;
+  border: 1px solid #363d38;
+  border-radius: 3px;
+  background: #121513;
+  color: #929a94;
+  cursor: pointer;
+}
+.inline-eye:hover { color: #d2d8d3; border-color: #4a534c; }
+.inline-eye.is-muted { color: #b0c666; border-color: #b0c666; }
+
+/* Checkerboard shows through when a slot has no fill, so "no colour" reads as
+   deliberate rather than as a black swatch. */
+.fill-swatch {
+  width: 26px; height: 26px;
+  flex: 0 0 auto;
+  border: 1px solid #363d38;
+  border-radius: 3px;
+  background-color: transparent;
+  background-image:
+    linear-gradient(45deg, #2a2f2b 25%, transparent 25%, transparent 75%, #2a2f2b 75%),
+    linear-gradient(45deg, #2a2f2b 25%, transparent 25%, transparent 75%, #2a2f2b 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 5px 5px;
+}
+
+.swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 10px 0;
+}
+.swatch {
+  width: 22px; height: 22px;
+  padding: 0;
+  border: 1px solid #363d38;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.swatch:hover { transform: scale(1.12); }
+.swatch.is-active { border-color: #d2d8d3; box-shadow: 0 0 0 2px rgba(176, 198, 102, .45); }
+
 /* Per-corner rounding inputs, laid out to mirror the corners themselves. */
 .corner-grid {
   display: grid;

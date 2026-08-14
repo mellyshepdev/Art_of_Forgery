@@ -3,6 +3,11 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSPropert
 import { toJpeg, toPng } from "html-to-image";
 import { cardTemplates, templateSrc } from "./data/cardTemplates";
 import { cardSlots as initialCardSlots, radiiOf, slotStyle, type CardSlot, type SlotRadii } from "./data/cardSlots";
+import { ColorWheel } from "./cardstudio/colorwheel";
+
+/** Colour a slot falls back to in the picker before one has been chosen. */
+const DEFAULT_FILL = "#b0c666";
+const HEX_RE = /^#[0-9a-f]{6}$/i;
 
 /** Corner handles, in the same order as CSS border-radius. */
 type CornerIndex = 0 | 1 | 2 | 3;
@@ -230,6 +235,24 @@ function App() {
   const toggleOutline = (id: number) =>
     setHiddenOutlines((prev) => ({ ...prev, [id]: !prev[id] }));
   const [slotFill, setSlotFill] = useState<Record<number, string>>({});
+  /* Colours already used on the card, newest first. Colouring 19 slots means
+     reaching for the same few shades repeatedly, and hunting for an exact
+     match on the wheel a second time is the slow part. */
+  const [recentColors, setRecentColors] = useState<string[]>([]);
+  /* The wheel is continuous - dragging it fires onChange constantly - so
+     recents are only recorded when a colour is committed, not while scrubbing. */
+  const setSlotColor = (id: number, hex: string) =>
+    setSlotFill((prev) => ({ ...prev, [id]: hex }));
+
+  const rememberColor = (hex: string) =>
+    setRecentColors((prev) => [hex, ...prev.filter((c) => c !== hex)].slice(0, 8));
+
+  const clearSlotColor = (id: number) =>
+    setSlotFill((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [zoomLocked, setZoomLocked] = useState(false);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -754,6 +777,70 @@ function App() {
                         </label>
                       ))}
                     </div>
+                  </section>
+
+                  <section className="property-section">
+                    <div className="section-label">
+                      <span>FILL COLOUR</span>
+                      <button
+                        className={outlineHidden(slot.id) ? "inline-eye is-muted" : "inline-eye"}
+                        aria-pressed={outlineHidden(slot.id)}
+                        title={outlineHidden(slot.id) ? "Show the outline again" : "Hide the outline to judge the colour on its own"}
+                        onClick={() => toggleOutline(slot.id)}
+                      >
+                        {outlineHidden(slot.id) ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    </div>
+
+                    <ColorWheel
+                      value={slotFill[slot.id] ?? DEFAULT_FILL}
+                      size={186}
+                      onChange={(hex) => setSlotColor(slot.id, hex)}
+                    />
+
+                    <label className="hex-input">
+                      <span
+                        className="fill-swatch"
+                        style={{ background: slotFill[slot.id] ?? "transparent" }}
+                        aria-hidden="true"
+                      />
+                      <input
+                        value={slotFill[slot.id] ?? ""}
+                        placeholder={DEFAULT_FILL}
+                        spellCheck={false}
+                        aria-label="Fill colour hex"
+                        onChange={(e) => {
+                          const v = e.target.value.trim();
+                          // Let the field hold half-typed values; only push a
+                          // complete hex through to the card.
+                          if (HEX_RE.test(v)) setSlotColor(slot.id, v.toLowerCase());
+                          else if (v === "") clearSlotColor(slot.id);
+                        }}
+                        onBlur={() => { const c = slotFill[slot.id]; if (c) rememberColor(c); }}
+                      />
+                    </label>
+
+                    {recentColors.length > 0 && (
+                      <div className="swatch-row" role="group" aria-label="Recent colours">
+                        {recentColors.map((hex) => (
+                          <button
+                            key={hex}
+                            className={`swatch ${slotFill[slot.id] === hex ? "is-active" : ""}`}
+                            style={{ background: hex }}
+                            title={hex}
+                            aria-label={`Use ${hex}`}
+                            onClick={() => setSlotColor(slot.id, hex)}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <button
+                      className="field-button subtle"
+                      onClick={() => { const c = slotFill[slot.id]; if (c) rememberColor(c); clearSlotColor(slot.id); }}
+                    >
+                      Clear fill
+                    </button>
                   </section>
 
                   <section className="property-section">

@@ -1,5 +1,3 @@
-
-Zones · TS
 import type { ZoneGeometry, ZoneId } from "./types";
  
 // ---------------------------------------------------------------------------
