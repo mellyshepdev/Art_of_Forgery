@@ -281,6 +281,12 @@ function App() {
      you want the one you're colouring to go quiet while the rest stay as
      reference. Not persisted - it's a way of looking, not part of the layout. */
   const [hiddenOutlines, setHiddenOutlines] = useState<Record<number, boolean>>({});
+  /* Global toggles, separate from the per-slot eye above. The red line and the
+     dots hide independently because they get in the way at different moments:
+     the line when judging a fill colour, the dots when checking the finished
+     shape. Neither is part of the layout, so neither is persisted. */
+  const [showOutline, setShowOutline] = useState(true);
+  const [showPoints, setShowPoints] = useState(true);
   const outlineHidden = (id: number) => Boolean(hiddenOutlines[id]);
   const toggleOutline = (id: number) =>
     setHiddenOutlines((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -907,7 +913,7 @@ function App() {
                       <polygon
                         points={slot.points!.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
                         fill={raw ? fillWithAlpha(raw, opacityOf(slot.id)) : "none"}
-                        stroke={outlineHidden(slot.id) ? "none" : "rgba(255, 60, 90, .78)"}
+                        stroke={(!showOutline || outlineHidden(slot.id)) ? "none" : "rgba(255, 60, 90, .78)"}
                         strokeWidth="1.5"
                         strokeDasharray="3 3"
                         vectorEffect="non-scaling-stroke"
@@ -937,6 +943,7 @@ function App() {
                         // repeat the transparency rather than rely on it.
                         background: slot.points?.length ? "transparent" : (fill ?? undefined),
                         borderWidth: `${1.5 * invZoom}px`,
+                        ...(showOutline ? null : { borderColor: "transparent" }),
                         cursor: tool === "edit-slots" ? "move" : "pointer",
                       }}
                       onClick={(event) => { event.stopPropagation(); pickSlot(slot.id); }}
@@ -1052,7 +1059,7 @@ function App() {
                   );
                 })()}
 
-                {tool === "edit-slots" && selectedSlot !== null && (() => {
+                {tool === "edit-slots" && selectedSlot !== null && showPoints && (() => {
                   const slot = slots.find((s) => s.id === selectedSlot);
                   if (!slot) return null;
                   /* Dots are always there on a selected outline - no button to
@@ -1188,6 +1195,23 @@ function App() {
                       pull a side in, push it out, wrap it around something. Need finer control
                       in one spot? Add more dots.
                     </p>
+                    <div className="toggle-pair">
+                      <button
+                        className={showOutline ? "field-button subtle" : "field-button subtle is-off"}
+                        aria-pressed={!showOutline}
+                        onClick={() => setShowOutline((v) => !v)}
+                      >
+                        {showOutline ? "Hide red line" : "Show red line"}
+                      </button>
+                      <button
+                        className={showPoints ? "field-button subtle" : "field-button subtle is-off"}
+                        aria-pressed={!showPoints}
+                        onClick={() => setShowPoints((v) => !v)}
+                      >
+                        {showPoints ? "Hide dots" : "Show dots"}
+                      </button>
+                    </div>
+
                     <button
                       className="field-button"
                       onClick={() => setSlots(slots.map((s) => {
