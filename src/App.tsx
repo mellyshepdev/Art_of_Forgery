@@ -1035,8 +1035,25 @@ function App() {
                     <label className="field-label">X (%)</label>
                     <input className="field-input" type="number" step="0.001" value={slot.x} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, x: parseFloat(e.target.value) } : s))} />
                     
-                    <label className="field-label">Y (%)</label>
-                    <input className="field-input" type="number" step="0.001" value={slot.y} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, y: parseFloat(e.target.value) } : s))} />
+                    {/* Measured up from the bottom of the card, so a bigger
+                        number moves the slot up. Internally y stays CSS-style
+                        (0 = top), which is what every other part of the app and
+                        the exported data expect - only this field is flipped.
+                        It also now shows a real percentage; it used to be
+                        labelled "%" while holding a 0-1 fraction, so 0.088 was
+                        really 8.8%. */}
+                    <label className="field-label">Y (% up from bottom)</label>
+                    <input
+                      className="field-input"
+                      type="number"
+                      step="0.1"
+                      value={Number(((1 - slot.y) * 100).toFixed(3))}
+                      onChange={(e) => {
+                        const up = parseFloat(e.target.value);
+                        if (!Number.isFinite(up)) return;
+                        setSlots(slots.map(s => s.id === slot.id ? { ...s, y: 1 - up / 100 } : s));
+                      }}
+                    />
                     
                     <label className="field-label">Width (%)</label>
                     <input className="field-input" type="number" step="0.001" value={slot.w} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, w: parseFloat(e.target.value) } : s))} />
