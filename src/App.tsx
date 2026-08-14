@@ -150,6 +150,7 @@ import {
   Layers3,
   Maximize2,
   Crosshair,
+  Tablet,
   Expand,
   Shrink,
   Minus,
@@ -413,6 +414,10 @@ function App() {
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
   const cornerDragRef = useRef<{ id: number; slotId: number; corner: CornerIndex; startX: number; startY: number; startRadius: number } | null>(null);
   const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
+  const padDragRef = useRef<{ slotId: number; index: number } | null>(null);
+  const [padState, setPadState] = useState<"off" | "connecting" | "live">("off");
+  const padSocket = useRef<WebSocket | null>(null);
+
 
   /* ---- Undo / redo -------------------------------------------------------
      Snapshots the editable state rather than recording individual operations:
@@ -458,6 +463,83 @@ function App() {
     setSlots(snap.slots);
     setSlotFill(snap.fill);
     setSlotOpacity(snap.opacity);
+  };
+
+  /* ---- Tablet pad ---------------------------------------------------------
+     Samples arrive from forge-relay as fractions of the pad's surface. They map
+     straight onto the card, so the tablet's resolution never has to match
+     anything here - a touch at the middle of the pad is the middle of the card.
+
+     Deliberately drives the same point-editing path as the mouse rather than a
+     parallel one: down grabs or inserts a point, move drags it, up releases. A
+     second code path would drift from the first the moment either changed. */
+  const padPointToSlot = (slot: CardSlot, cardX: number, cardY: number): SlotPoint | null => {
+    if (!slot.w || !slot.h) return null;
+    return [(cardX - slot.x) / slot.w, (cardY - slot.y) / slot.h];
+  };
+
+  const applyPadSample = (msg: { phase?: string; x?: number; y?: number }) => {
+    if (selectedSlot === null) return;
+    const slot = slots.find((s) => s.id === selectedSlot);
+    if (!slot || typeof msg.x !== "number" || typeof msg.y !== "number") return;
+    const local = padPointToSlot(slot, msg.x, msg.y);
+    if (!local) return;
+
+    if (msg.phase === "down") {
+      const pts = slot.points?.length ? slot.points : samplePoints(slot);
+      // Grab a nearby point if there is one, otherwise open a new one on the
+      // edge - the same choice the mouse makes between a dot and the grab band.
+      let nearest = -1, best = Infinity;
+      pts.forEach((pt, i) => {
+        const d = Math.hypot((pt[0] - local[0]) * slot.w, (pt[1] - local[1]) * slot.h);
+        if (d < best) { best = d; nearest = i; }
+      });
+      const GRAB = 0.02;                       // in card units, ~2% of the card
+      if (nearest >= 0 && best <= GRAB) {
+        setSlots(slots.map((sl) => sl.id === slot.id ? { ...sl, points: pts } : sl));
+        padDragRef.current = { slotId: slot.id, index: nearest };
+      } else {
+        const aspect = (slot.w * 744) / (slot.h * 1056);
+        const seg = nearestSegment(pts, local, aspect);
+        const next = [...pts];
+        next.splice(seg + 1, 0, local);
+        setSlots(slots.map((sl) => sl.id === slot.id ? { ...sl, points: next } : sl));
+        padDragRef.current = { slotId: slot.id, index: seg + 1 };
+      }
+      return;
+    }
+
+    if (msg.phase === "move" && padDragRef.current) {
+      const d = padDragRef.current;
+      setSlots(slots.map((sl) => {
+        if (sl.id !== d.slotId || !sl.points) return sl;
+        return { ...sl, points: sl.points.map((pt, i) => (i === d.index ? local : pt)) };
+      }));
+      return;
+    }
+
+    if (msg.phase === "up") padDragRef.current = null;
+  };
+
+  const togglePad = () => {
+    if (padSocket.current) {
+      padSocket.current.close();
+      padSocket.current = null;
+      setPadState("off");
+      return;
+    }
+    setPadState("connecting");
+    const ws = new WebSocket(`wss://${window.location.host}/view/default`);
+    padSocket.current = ws;
+    ws.onopen = () => { setPadState("live"); flash("Tablet pad connected"); };
+    ws.onclose = () => { setPadState("off"); padSocket.current = null; };
+    ws.onerror = () => { setPadState("off"); flash("Pad connection failed"); };
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.t === "ptr") applyPadSample(msg);
+      } catch { /* a malformed frame must not kill the socket */ }
+    };
   };
 
   const undo = () => {
@@ -962,6 +1044,11 @@ function App() {
               <ToolButton label={showGuides ? "Hide slot guides" : "Show slot guides"} active={showGuides} onClick={() => setShowGuides((value) => !value)}><Frame size={16} /></ToolButton>
               <ToolButton label="Show numbered edit points" active={showMarkers} onClick={() => setShowMarkers((value) => !value)}><ZoomIn size={16} /></ToolButton>
               <ToolButton label={zoomLocked ? "Exit zoom" : "Fit to canvas"} onClick={exitZoom}><Maximize2 size={16} /></ToolButton>
+              <ToolButton
+                label={padState === "live" ? "Tablet pad: connected" : padState === "connecting" ? "Tablet pad: connecting…" : "Connect tablet pad"}
+                active={padState === "live"}
+                onClick={togglePad}
+              ><Tablet size={16} /></ToolButton>
               <ToolButton
                 label={dotCursor ? "Cursor: precision dot" : "Cursor: default"}
                 active={dotCursor}
