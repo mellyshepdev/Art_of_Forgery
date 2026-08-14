@@ -829,3 +829,13 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
    background - it is no longer sitting inside .app-shell. */
 .canvas-area:fullscreen { width: 100vw; height: 100vh; background: #101311; }
 .canvas-area:fullscreen .canvas-toolbar { top: 16px; }
+
+/* Precision cursor: a 16px ring with the hotspot dead centre, so what you see
+   is exactly where the click lands. Dark halo under a white ring so it stays
+   readable over artwork of any brightness. !important because slots, dots and
+   the grab band each set their own cursor inline or in CSS, and every one of
+   them has to give way while this mode is on. */
+.canvas-area.cursor-dot,
+.canvas-area.cursor-dot * {
+  cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='8' cy='8' r='4' fill='none' stroke='%23000' stroke-opacity='.6' stroke-width='3'/%3E%3Ccircle cx='8' cy='8' r='4' fill='none' stroke='%23fff' stroke-width='1.4'/%3E%3Ccircle cx='8' cy='8' r='1' fill='%23fff'/%3E%3C/svg%3E") 8 8, crosshair !important;
+}

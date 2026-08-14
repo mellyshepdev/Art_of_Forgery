@@ -149,6 +149,7 @@ import {
   ImagePlus,
   Layers3,
   Maximize2,
+  Crosshair,
   Expand,
   Shrink,
   Minus,
@@ -574,6 +575,11 @@ function App() {
   /* Full-screen the canvas. The toolbar lives inside .canvas-area, so zoom,
      Edit Slots and the guide toggles all come along - only the side panels are
      left behind, which is the trade that buys the room. */
+  /* Precision cursor. The hand and arrow are drawn well above the hotspot they
+     report, so they sit on top of the exact pixel being aimed at - fine for
+     dragging a whole slot, useless for placing a point. The dot is 16px with
+     its hotspot dead centre. */
+  const [dotCursor, setDotCursor] = useState(false);
   const canvasRef = useRef<HTMLElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -925,7 +931,7 @@ function App() {
           </div>
         </aside>
 
-        <main className="canvas-area" ref={canvasRef}>
+        <main className={`canvas-area ${dotCursor ? "cursor-dot" : ""}`} ref={canvasRef}>
           <div className="canvas-toolbar">
             <div className="tool-group">
               <ToolButton label="Select tool" active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={16} /></ToolButton>
@@ -956,6 +962,11 @@ function App() {
               <ToolButton label={showGuides ? "Hide slot guides" : "Show slot guides"} active={showGuides} onClick={() => setShowGuides((value) => !value)}><Frame size={16} /></ToolButton>
               <ToolButton label="Show numbered edit points" active={showMarkers} onClick={() => setShowMarkers((value) => !value)}><ZoomIn size={16} /></ToolButton>
               <ToolButton label={zoomLocked ? "Exit zoom" : "Fit to canvas"} onClick={exitZoom}><Maximize2 size={16} /></ToolButton>
+              <ToolButton
+                label={dotCursor ? "Cursor: precision dot" : "Cursor: default"}
+                active={dotCursor}
+                onClick={() => setDotCursor((v) => !v)}
+              ><Crosshair size={16} /></ToolButton>
               <ToolButton
                 label={isFullscreen ? "Exit full screen (Esc)" : "Full screen canvas"}
                 active={isFullscreen}
