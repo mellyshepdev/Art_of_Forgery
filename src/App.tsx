@@ -149,6 +149,8 @@ import {
   ImagePlus,
   Layers3,
   Maximize2,
+  Expand,
+  Shrink,
   Minus,
   MousePointer2,
   Plus,
@@ -569,6 +571,27 @@ function App() {
      40px circle; a stylus is precise to a pixel. Giving both the same 8px
      target makes touch feel broken and pen feel imprecise. */
   const [coarsePointer, setCoarsePointer] = useState(false);
+  /* Full-screen the canvas. The toolbar lives inside .canvas-area, so zoom,
+     Edit Slots and the guide toggles all come along - only the side panels are
+     left behind, which is the trade that buys the room. */
+  const canvasRef = useRef<HTMLElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    const el = canvasRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else el.requestFullscreen?.().catch(() => flash("Full screen was blocked by the browser"));
+  };
+
+  // Esc and the browser's own controls exit without telling us, so track the
+  // document rather than assuming our button is the only way out.
+  useEffect(() => {
+    const sync = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
   const livePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinch = useRef<{ dist: number; zoom: number; midX: number; midY: number; panX: number; panY: number } | null>(null);
 
@@ -902,7 +925,7 @@ function App() {
           </div>
         </aside>
 
-        <main className="canvas-area">
+        <main className="canvas-area" ref={canvasRef}>
           <div className="canvas-toolbar">
             <div className="tool-group">
               <ToolButton label="Select tool" active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={16} /></ToolButton>
@@ -933,6 +956,11 @@ function App() {
               <ToolButton label={showGuides ? "Hide slot guides" : "Show slot guides"} active={showGuides} onClick={() => setShowGuides((value) => !value)}><Frame size={16} /></ToolButton>
               <ToolButton label="Show numbered edit points" active={showMarkers} onClick={() => setShowMarkers((value) => !value)}><ZoomIn size={16} /></ToolButton>
               <ToolButton label={zoomLocked ? "Exit zoom" : "Fit to canvas"} onClick={exitZoom}><Maximize2 size={16} /></ToolButton>
+              <ToolButton
+                label={isFullscreen ? "Exit full screen (Esc)" : "Full screen canvas"}
+                active={isFullscreen}
+                onClick={toggleFullscreen}
+              >{isFullscreen ? <Shrink size={16} /> : <Expand size={16} />}</ToolButton>
             </div>
           </div>
 
