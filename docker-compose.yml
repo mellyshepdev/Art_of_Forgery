@@ -5,13 +5,13 @@ services:
       dockerfile: Dockerfile
     container_name: forge
     restart: unless-stopped
+    # Routing lives in Traefik's file provider (dynamic-config/forge.yml), which
+    # serves forge.prime-quality.online only. These labels used to publish
+    # forge.theofficialblacksheepco.online as a second way in - retired
+    # 2026-08-14. Leaving traefik.enable=false so the docker provider cannot
+    # quietly re-add a route that bypasses the intended single entrypoint.
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.forge.rule=Host(`forge.theofficialblacksheepco.online`)"
-      - "traefik.http.routers.forge.entrypoints=websecure"
-      - "traefik.http.routers.forge.tls=true"
-      - "traefik.http.routers.forge.tls.certresolver=myresolver"
-      - "traefik.http.services.forge.loadbalancer.server.port=80"
+      - "traefik.enable=false"
     networks:
       - traefik_proxy
 

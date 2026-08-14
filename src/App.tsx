@@ -33,6 +33,11 @@ const CORNER_SIGNS: Record<CornerIndex, [number, number]> = {
 };
 const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
 
+/** Zoom ceiling for close work on outline points. */
+const ZOOM_MAX = 500;
+/** Bigger jumps the further in you are - 5% steps from 78 to 500 is 85 clicks. */
+const zoomStep = (z: number) => (z < 100 ? 5 : z < 200 ? 10 : 25);
+
 const SLOTS_STORAGE_KEY = "card-creator.slots.v1";
 
 /** Read back saved slot edits, layered over the authored defaults by id.
@@ -404,9 +409,9 @@ function App() {
     const w = slot.w * card.width;
     const h = slot.h * card.height;
     if (!w || !h) return null;
-    // Allowed slightly outside the box so an outline can bulge past its bounds.
-    const clamp = (v: number) => Math.max(-0.5, Math.min(1.5, v));
-    return [clamp((clientX - left) / w), clamp((clientY - top) / h)];
+    // Deliberately unclamped: a point may go anywhere on the card, so an
+    // outline can reach right around a neighbouring object.
+    return [(clientX - left) / w, (clientY - top) / h];
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -673,9 +678,9 @@ function App() {
               <ToolButton label="Edit Slots" active={tool === "edit-slots"} onClick={() => { setTool("edit-slots"); exitZoom(); }}><Frame size={16} /></ToolButton>
             </div>
             <div className="zoom-control">
-              <button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(58, value - 5))}><Minus size={14} /></button>
+              <button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(58, value - zoomStep(value)))}><Minus size={14} /></button>
               <button className="zoom-value" onClick={() => setZoom(78)}>{zoom}%</button>
-              <button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(200, value + 5))}><Plus size={14} /></button>
+              <button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value + zoomStep(value)))}><Plus size={14} /></button>
             </div>
             <div className="tool-group canvas-options">
               <ToolButton label={showGuides ? "Hide slot guides" : "Show slot guides"} active={showGuides} onClick={() => setShowGuides((value) => !value)}><Frame size={16} /></ToolButton>
@@ -822,19 +827,29 @@ function App() {
                     dragged directly to nudge that stretch of the edge. */}
                 {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
                   const slot = slots.find((s) => s.id === selectedSlot);
-                  if (!slot?.points?.length) return null;
+                  if (!slot) return null;
+                  /* Dots are always there on a selected outline - no button to
+                     find first. A slot that has never been point-edited shows
+                     them derived from its current shape, and grabbing one
+                     commits those points for real. */
+                  const pts = slot.points?.length ? slot.points : samplePoints(slot);
                   return (
                     <div className="slot-handles" style={slotStyle({ ...slot, points: undefined })} data-export-hide="true">
-                      {slot.points.map(([px, py], i) => (
+                      {pts.map(([px, py], i) => (
                         <span
                           key={i}
                           className="slot-point"
                           style={{ left: `${px * 100}%`, top: `${py * 100}%` }}
-                          title={`Point ${i + 1} of ${slot.points!.length} - drag to fine-tune`}
+                          title={`Point ${i + 1} of ${pts.length} - drag anywhere`}
                           aria-label={`Outline point ${i + 1}`}
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             event.currentTarget.setPointerCapture(event.pointerId);
+                            if (!slot.points?.length) {
+                              // Materialise on first grab, so the shape doesn't
+                              // shift under the cursor as it converts.
+                              setSlots(slots.map((s) => s.id === slot.id ? { ...s, points: pts } : s));
+                            }
                             pointDragRef.current = { id: event.pointerId, slotId: slot.id, index: i };
                           }}
                         />
@@ -923,33 +938,36 @@ function App() {
 
                   <section className="property-section">
                     <div className="section-label"><span>FINE TUNE</span></div>
+                    <p className="property-note">
+                      {(slot.points?.length ?? samplePoints(slot).length)} dots sit on this
+                      outline whenever it's selected. Drag any of them anywhere on the card —
+                      pull a side in, push it out, wrap it around something. Need finer control
+                      in one spot? Add more dots.
+                    </p>
+                    <button
+                      className="field-button"
+                      onClick={() => setSlots(slots.map((s) => {
+                        if (s.id !== slot.id) return s;
+                        const base = s.points?.length ? s.points : samplePoints(s);
+                        // Midpoint between each pair, so existing points don't move.
+                        const denser: SlotPoint[] = [];
+                        base.forEach((p, i) => {
+                          const q = base[(i + 1) % base.length];
+                          denser.push(p, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]);
+                        });
+                        return { ...s, points: denser };
+                      }))}
+                    >
+                      More dots
+                    </button>
                     {slot.points?.length ? (
-                      <>
-                        <p className="property-note">
-                          {slot.points.length} points on this outline. Drag any dot on the card to
-                          nudge that stretch of the edge.
-                        </p>
-                        <button
-                          className="field-button subtle"
-                          onClick={() => setSlots(slots.map((s) => s.id === slot.id ? { ...s, points: undefined } : s))}
-                        >
-                          Back to corner rounding
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <p className="property-note">
-                          Turns this outline into draggable points, starting from exactly the
-                          shape it has now. Use it for the areas corner rounding can't reach.
-                        </p>
-                        <button
-                          className="field-button"
-                          onClick={() => setSlots(slots.map((s) => s.id === slot.id ? { ...s, points: samplePoints(s) } : s))}
-                        >
-                          Add outline points
-                        </button>
-                      </>
-                    )}
+                      <button
+                        className="field-button subtle"
+                        onClick={() => setSlots(slots.map((s) => s.id === slot.id ? { ...s, points: undefined } : s))}
+                      >
+                        Reset this outline
+                      </button>
+                    ) : null}
                   </section>
 
                   <section className="property-section">
