@@ -65,6 +65,19 @@ const loadSlots = (): CardSlot[] => {
         saved.radii.every((r) => typeof r === "number" && Number.isFinite(r))
           ? (saved.radii.map(clampRadius) as SlotRadii)
           : base.radii;
+      // Outline points. These were being dropped on load - saved correctly,
+      // then discarded here - which silently threw away every point-edited
+      // outline on refresh. Validated the same way as everything else: a pair
+      // of finite numbers, or the whole set is ignored.
+      const points =
+        Array.isArray(saved.points) &&
+        saved.points.length >= 3 &&
+        saved.points.every(
+          (p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)),
+        )
+          ? (saved.points as SlotPoint[])
+          : base.points;
+
       return {
         ...base,
         shape: saved.shape === "circle" || saved.shape === "rect" ? saved.shape : base.shape,
@@ -73,6 +86,7 @@ const loadSlots = (): CardSlot[] => {
         w: num(saved.w, base.w),
         h: num(saved.h, base.h),
         ...(radii ? { radii } : null),
+        ...(points ? { points } : null),
       };
     });
   } catch {
