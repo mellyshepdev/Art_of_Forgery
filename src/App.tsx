@@ -1,7 +1,75 @@
-import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { toJpeg, toPng } from "html-to-image";
 import { cardTemplates, templateSrc } from "./data/cardTemplates";
-import { cardSlots as initialCardSlots, slotStyle, type CardSlot } from "./data/cardSlots";
+import { cardSlots as initialCardSlots, radiiOf, slotStyle, type CardSlot, type SlotRadii } from "./data/cardSlots";
+
+/** Corner handles, in the same order as CSS border-radius. */
+type CornerIndex = 0 | 1 | 2 | 3;
+const CORNERS: { index: CornerIndex; label: string; css: CSSProperties }[] = [
+  { index: 0, label: "top-left",     css: { left: 0, top: 0 } },
+  { index: 1, label: "top-right",    css: { right: 0, top: 0 } },
+  { index: 2, label: "bottom-right", css: { right: 0, bottom: 0 } },
+  { index: 3, label: "bottom-left",  css: { left: 0, bottom: 0 } },
+];
+/** Direction from the slot's centre out to each corner, matching CORNERS. */
+const CORNER_SIGNS: Record<CornerIndex, [number, number]> = {
+  0: [-1, -1], 1: [1, -1], 2: [1, 1], 3: [-1, 1],
+};
+const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
+
+const SLOTS_STORAGE_KEY = "card-creator.slots.v1";
+
+/** Read back saved slot edits, layered over the authored defaults by id.
+ *  Merging rather than replacing means slots added to cardSlots.ts later still
+ *  show up, and one bad stored field can't wipe the whole grid - anything
+ *  missing or malformed falls back to how the slot ships. */
+const loadSlots = (): CardSlot[] => {
+  try {
+    const raw = localStorage.getItem(SLOTS_STORAGE_KEY);
+    if (!raw) return initialCardSlots;
+    const stored: unknown = JSON.parse(raw);
+    if (!Array.isArray(stored)) return initialCardSlots;
+    const byId = new Map<number, Partial<CardSlot>>();
+    for (const entry of stored as Partial<CardSlot>[]) {
+      if (entry && typeof entry.id === "number") byId.set(entry.id, entry);
+    }
+    const num = (v: unknown, fallback: number) =>
+      typeof v === "number" && Number.isFinite(v) ? v : fallback;
+    return initialCardSlots.map((base) => {
+      const saved = byId.get(base.id);
+      if (!saved) return base;
+      const radii =
+        Array.isArray(saved.radii) &&
+        saved.radii.length === 4 &&
+        saved.radii.every((r) => typeof r === "number" && Number.isFinite(r))
+          ? (saved.radii.map(clampRadius) as SlotRadii)
+          : base.radii;
+      return {
+        ...base,
+        shape: saved.shape === "circle" || saved.shape === "rect" ? saved.shape : base.shape,
+        x: num(saved.x, base.x),
+        y: num(saved.y, base.y),
+        w: num(saved.w, base.w),
+        h: num(saved.h, base.h),
+        ...(radii ? { radii } : null),
+      };
+    });
+  } catch {
+    return initialCardSlots;   // unreadable storage should never block the app
+  }
+};
+
+/** Emit the grid as the literal contents of cardSlots.ts, so a finished layout
+ *  can be pasted back into source and stop depending on this browser. */
+const slotsToSource = (slots: CardSlot[]) => {
+  const f = (n: number) => n.toFixed(5);
+  const lines = slots.map((s) => {
+    const radii = s.radii ? `, radii: [${s.radii.map((r) => Math.round(r)).join(", ")}]` : "";
+    return `  { id: ${s.id}, name: ${JSON.stringify(s.name)}, shape: ${JSON.stringify(s.shape)}, ` +
+      `kind: ${JSON.stringify(s.kind)}, x: ${f(s.x)}, y: ${f(s.y)}, w: ${f(s.w)}, h: ${f(s.h)}${radii} },`;
+  });
+  return `export const cardSlots: CardSlot[] = [\n${lines.join("\n")}\n];\n`;
+};
 import {
   Check,
   ChevronDown,
@@ -152,13 +220,48 @@ function App() {
   const [tool, setTool] = useState<"select" | "hand" | "edit-slots">("select");
   const [templateIndex, setTemplateIndex] = useState(0);
   const [showGuides, setShowGuides] = useState(true);
+  /* Slots whose red outline is muted so the fill colour underneath can be
+     judged on its own. Deliberately per-slot and separate from showGuides:
+     you want the one you're colouring to go quiet while the rest stay as
+     reference. Not persisted - it's a way of looking, not part of the layout. */
+  const [hiddenOutlines, setHiddenOutlines] = useState<Record<number, boolean>>({});
+  const outlineHidden = (id: number) => Boolean(hiddenOutlines[id]);
+  const toggleOutline = (id: number) =>
+    setHiddenOutlines((prev) => ({ ...prev, [id]: !prev[id] }));
   const [slotFill, setSlotFill] = useState<Record<number, string>>({});
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [zoomLocked, setZoomLocked] = useState(false);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [slots, setSlots] = useState<CardSlot[]>(initialCardSlots);
+  const [slots, setSlots] = useState<CardSlot[]>(loadSlots);
   const dragRef = useRef<{ id: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
+  const cornerDragRef = useRef<{ id: number; slotId: number; corner: CornerIndex; startX: number; startY: number; startRadius: number } | null>(null);
+
+  /* Autosave every slot edit. Storage being full or blocked (private mode,
+     locked-down browser) must not break editing, so failures are swallowed. */
+  useEffect(() => {
+    try {
+      localStorage.setItem(SLOTS_STORAGE_KEY, JSON.stringify(slots));
+    } catch { /* editing still works, it just won't survive a reload */ }
+  }, [slots]);
+
+  const resetSlots = () => {
+    try { localStorage.removeItem(SLOTS_STORAGE_KEY); } catch { /* nothing to undo */ }
+    setSlots(initialCardSlots);
+    flash("Slots reset to their built-in positions");
+  };
+
+  const copySlotSource = async () => {
+    const source = slotsToSource(slots);
+    try {
+      await navigator.clipboard.writeText(source);
+      flash("Slot data copied - paste it into cardSlots.ts to make it permanent");
+    } catch {
+      // Clipboard needs a secure context and permission; fall back to something
+      // the user can still select and copy by hand.
+      window.prompt("Copy the slot data below:", source);
+    }
+  };
 
   const selected = useMemo(() => layers.find((layer) => layer.id === selectedLayer) ?? layers[0], [selectedLayer]);
   const theme = themes[themeKey];
@@ -214,6 +317,31 @@ function App() {
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    /* Reshaping a corner. Dragging the handle *inward* (toward the slot's
+       centre) rounds that corner off; dragging it *outward* squares it up so
+       the outline reaches into the corner and covers whatever sits there. */
+    const cDrag = cornerDragRef.current;
+    if (cDrag && cDrag.id === event.pointerId) {
+      event.preventDefault();
+      const z = zoom / 100;
+      const slot = slots.find((s) => s.id === cDrag.slotId);
+      if (!slot) return;
+      // Corner handles sit at (±1, ±1) from centre; project the drag onto the
+      // diagonal running out to this corner so both axes push the same way.
+      const [sx, sy] = CORNER_SIGNS[cDrag.corner];
+      const dx = ((event.clientX - cDrag.startX) / z / 744) / Math.max(slot.w, 1e-6);
+      const dy = ((event.clientY - cDrag.startY) / z / 1056) / Math.max(slot.h, 1e-6);
+      const outward = (dx * sx + dy * sy) / 2;   // fraction of the slot's half-extent
+      const next = clampRadius(cDrag.startRadius - outward * 100);
+      setSlots(slots.map((s) => {
+        if (s.id !== cDrag.slotId) return s;
+        const radii = [...radiiOf(s)] as SlotRadii;
+        radii[cDrag.corner] = next;
+        return { ...s, radii };
+      }));
+      return;
+    }
+
     const sDrag = slotDragRef.current;
     if (sDrag && sDrag.id === event.pointerId) {
       event.preventDefault();
@@ -238,6 +366,15 @@ function App() {
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const cDrag = cornerDragRef.current;
+    if (cDrag && cDrag.id === event.pointerId) {
+      cornerDragRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+
     const sDrag = slotDragRef.current;
     if (sDrag && sDrag.id === event.pointerId) {
       slotDragRef.current = null;
@@ -463,7 +600,7 @@ function App() {
                   return (
                     <button
                       key={slot.id}
-                      className={`slot slot-${slot.shape} ${selectedSlot === slot.id ? "is-selected" : ""} ${tool === "edit-slots" ? "is-editable" : ""}`}
+                      className={`slot slot-${slot.shape} ${selectedSlot === slot.id ? "is-selected" : ""} ${tool === "edit-slots" ? "is-editable" : ""} ${outlineHidden(slot.id) ? "is-outline-hidden" : ""}`}
                       style={{ ...slotStyle(slot), background: fill ?? undefined, cursor: tool === "edit-slots" ? "move" : "pointer" }}
                       onClick={(event) => { event.stopPropagation(); pickSlot(slot.id); }}
                       onPointerDown={(event) => {
@@ -484,10 +621,61 @@ function App() {
                       aria-label={`Slot ${slot.id}: ${slot.name}`}
                     >
                       {text && <span className="slot-text">{text}</span>}
-                      {showGuides && <i className="slot-num" data-export-hide="true">{slot.id}</i>}
+                      {showGuides && !outlineHidden(slot.id) && <i className="slot-num" data-export-hide="true">{slot.id}</i>}
                     </button>
                   );
                 })}
+
+                {/* Corner handles for the selected slot. Siblings of the slot
+                    buttons rather than children, because .slot is a <button>
+                    and controls must not nest inside one. */}
+                {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
+                  const slot = slots.find((s) => s.id === selectedSlot);
+                  if (!slot) return null;
+                  const radii = radiiOf(slot);
+                  return (
+                    <div className="slot-handles" style={slotStyle(slot)} data-export-hide="true">
+                      {CORNERS.map(({ index, label, css }) => (
+                        <span
+                          key={index}
+                          className="slot-handle"
+                          style={css}
+                          role="slider"
+                          tabIndex={0}
+                          aria-label={`${slot.name} ${label} corner rounding`}
+                          aria-valuemin={0}
+                          aria-valuemax={50}
+                          aria-valuenow={Math.round(radii[index])}
+                          title={`${label} - drag out to square off, in to round`}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            event.currentTarget.setPointerCapture(event.pointerId);
+                            cornerDragRef.current = {
+                              id: event.pointerId,
+                              slotId: slot.id,
+                              corner: index,
+                              startX: event.clientX,
+                              startY: event.clientY,
+                              startRadius: radii[index],
+                            };
+                          }}
+                          onKeyDown={(event) => {
+                            const step = event.key === "ArrowLeft" || event.key === "ArrowDown" ? -2
+                              : event.key === "ArrowRight" || event.key === "ArrowUp" ? 2 : 0;
+                            if (!step) return;
+                            event.preventDefault();
+                            setSlots(slots.map((s) => {
+                              if (s.id !== slot.id) return s;
+                              const next = [...radiiOf(s)] as SlotRadii;
+                              next[index] = clampRadius(next[index] + step);
+                              return { ...s, radii: next };
+                            }));
+                          }}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {cardSubtitle && (
                   <div className="slot-subtitle" style={slotStyle(slots[1])}>{cardSubtitle}</div>
@@ -506,6 +694,15 @@ function App() {
               <>
                 <div className="properties-title">
                   <div><span>{slot.id}</span><p><strong>{slot.name}</strong><small>{slot.kind}</small></p></div>
+                  <button
+                    className={outlineHidden(slot.id) ? "is-muted" : ""}
+                    aria-pressed={outlineHidden(slot.id)}
+                    aria-label={outlineHidden(slot.id) ? "Show this slot's outline" : "Hide this slot's outline to preview its colour"}
+                    title={outlineHidden(slot.id) ? "Show outline" : "Hide outline - preview the colour on its own"}
+                    onClick={() => toggleOutline(slot.id)}
+                  >
+                    {outlineHidden(slot.id) ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                   <button aria-label="Close properties" onClick={() => setSelectedSlot(null)}><X size={16} /></button>
                 </div>
                 <div className="property-scroll">
@@ -533,6 +730,39 @@ function App() {
                     
                     <label className="field-label">Height (%)</label>
                     <input className="field-input" type="number" step="0.001" value={slot.h} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? { ...s, h: parseFloat(e.target.value) } : s))} />
+
+                    <label className="field-label">Corners (%) - 50 round, 0 square</label>
+                    <div className="corner-grid">
+                      {CORNERS.map(({ index, label }) => (
+                        <label key={index} className="corner-field" title={label}>
+                          <span>{label}</span>
+                          <input
+                            className="field-input"
+                            type="number"
+                            min={0}
+                            max={50}
+                            step="1"
+                            value={Math.round(radiiOf(slot)[index])}
+                            onChange={(e) => setSlots(slots.map((s) => {
+                              if (s.id !== slot.id) return s;
+                              const next = [...radiiOf(s)] as SlotRadii;
+                              next[index] = clampRadius(parseFloat(e.target.value));
+                              return { ...s, radii: next };
+                            }))}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="property-section">
+                    <div className="section-label"><span>SAVED LAYOUT</span></div>
+                    <p className="property-note">
+                      Edits save to this browser automatically. To make them permanent for
+                      everyone, copy the data and paste it into <code>cardSlots.ts</code>.
+                    </p>
+                    <button className="field-button" onClick={copySlotSource}>Copy slot data</button>
+                    <button className="field-button subtle" onClick={resetSlots}>Reset all slots</button>
                   </section>
                 </div>
               </>

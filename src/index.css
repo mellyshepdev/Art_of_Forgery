@@ -535,9 +535,86 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
 .slot-circle { border-radius: 50%; }
 .slot-rect   { border-radius: 3px; }
 
+/* Eye button reads as "off" while the outline is muted, so the card stays the
+   thing you're looking at rather than the button. */
+.properties-title button.is-muted { color: #ff3c5a; opacity: 1; }
+
+/* Per-corner rounding inputs, laid out to mirror the corners themselves. */
+.corner-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.corner-field { display: grid; gap: 3px; }
+.corner-field > span {
+  font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .62;
+}
+/* bottom-left sits under top-left, bottom-right under top-right */
+.corner-field:nth-child(3) { grid-column: 2; grid-row: 2; }
+.corner-field:nth-child(4) { grid-column: 1; grid-row: 2; }
+
+.field-button {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 60, 90, .5);
+  border-radius: 4px;
+  background: rgba(255, 60, 90, .12);
+  color: inherit;
+  font: 600 11px/1.2 inherit;
+  cursor: pointer;
+}
+.field-button:hover { background: rgba(255, 60, 90, .24); }
+.field-button.subtle {
+  border-color: rgba(255, 255, 255, .18);
+  background: transparent;
+  opacity: .78;
+}
+.field-button.subtle:hover { background: rgba(255, 255, 255, .07); opacity: 1; }
+
+/* Corner-reshaping handles. The wrapper only positions them - it must never
+   swallow clicks meant for the slot underneath. */
+.slot-handles {
+  position: absolute;
+  pointer-events: none;
+}
+.slot-handle {
+  position: absolute;
+  width: 11px; height: 11px;
+  margin: -5.5px;
+  box-sizing: border-box;
+  border: 1.5px solid #ff3c5a;
+  border-radius: 2px;
+  background: #1b1b1f;
+  pointer-events: auto;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.slot-handle:nth-child(2), .slot-handle:nth-child(4) { cursor: nesw-resize; }
+.slot-handle:hover, .slot-handle:focus-visible {
+  background: #ff3c5a;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 60, 90, .3);
+}
+
 .show-guides .slot { border-color: rgba(255, 60, 90, .78); }
 .slot:hover        { border-color: rgba(255, 60, 90, .95); }
 .slot.is-selected  { border-style: solid; border-color: #ff3c5a; box-shadow: 0 0 0 2px rgba(255, 60, 90, .28); }
+
+/* Eye toggle: mute one slot's outline so its fill colour can be judged alone.
+   Must come after the rules above - .show-guides, :hover and .is-selected all
+   repaint the border, and .is-selected is always on for the slot being edited,
+   which is exactly the one you're trying to see clearly. Equal specificity, so
+   source order is what makes this win; keep it last. */
+.slot.is-outline-hidden {
+  border-color: transparent;
+  border-style: dotted;
+  box-shadow: none;
+}
 
 .slot-num {
   position: absolute;

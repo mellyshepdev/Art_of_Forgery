@@ -1,6 +1,14 @@
 export type SlotShape = "circle" | "rect";
 export type SlotKind = "text" | "fill" | "image";
 
+/** Per-corner rounding, in % of the slot's own width/height, in CSS order:
+ *  top-left, top-right, bottom-right, bottom-left. 50 is fully round, 0 is a
+ *  square corner. Lets one slot cover a circle *and* the corner of a box that
+ *  cuts into it - square off just that corner and the outline bulges out to
+ *  swallow it. Omitted means "use the shape's default", so every slot authored
+ *  before this existed keeps its exact old outline. */
+export type SlotRadii = [number, number, number, number];
+
 export type CardSlot = {
   /** 1-19, the number shown on the guide overlay */
   id: number;
@@ -9,7 +17,15 @@ export type CardSlot = {
   kind: SlotKind;
   /** all coords are fractions of the card, never pixels, so they hold at any size */
   x: number; y: number; w: number; h: number;
+  radii?: SlotRadii;
 };
+
+/** What a slot's corners look like when it has no explicit radii. Mirrors the
+ *  .slot-circle / .slot-rect rules in index.css. */
+export const defaultRadii = (shape: SlotShape): SlotRadii =>
+  shape === "circle" ? [50, 50, 50, 50] : [3, 3, 3, 3];
+
+export const radiiOf = (s: CardSlot): SlotRadii => s.radii ?? defaultRadii(s.shape);
 
 /** The master grid. Shared by every template - this is what guarantees that
  *  switching template never moves a slot. */
@@ -42,4 +58,7 @@ export const slotStyle = (s: CardSlot) => ({
   top: `${s.y * 100}%`,
   width: `${s.w * 100}%`,
   height: `${s.h * 100}%`,
+  // Only override the stylesheet once a slot has been reshaped by hand, so
+  // untouched slots keep rendering exactly as .slot-circle / .slot-rect say.
+  ...(s.radii ? { borderRadius: s.radii.map((r) => `${r}%`).join(" ") } : null),
 });
