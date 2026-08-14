@@ -291,6 +291,34 @@ function App() {
      slot the moment anything was inserted ahead of them. */
   const slotOf = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
 
+  /* The stage is transform: scale(zoom/100), so everything inside it scales -
+     handles and hairlines included. At 500% a 9px dot renders as a 45px blob
+     covering the very detail you zoomed in to see. Counter-scaling keeps chrome
+     a constant size on screen no matter how far in you are. */
+  const invZoom = 100 / zoom;
+
+  /** Which edge segment a point falls nearest, so grabbing the outline inserts
+   *  a point in the right place. Distances are weighted by the slot's on-screen
+   *  aspect - unweighted, a wide slot biases every hit toward its short edges. */
+  const nearestSegment = (pts: SlotPoint[], p: SlotPoint, aspect: number) => {
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const ax = a[0] * aspect, ay = a[1];
+      const bx = b[0] * aspect, by = b[1];
+      const px = p[0] * aspect, py = p[1];
+      const vx = bx - ax, vy = by - ay;
+      const len2 = vx * vx + vy * vy;
+      const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2)) : 0;
+      const dx = px - (ax + t * vx), dy = py - (ay + t * vy);
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  };
+
   /* Press-and-hold zooming. One step fires immediately so a plain click still
      nudges, then after a short delay it repeats and accelerates - crossing
      78% to 500% by clicking would otherwise be a lot of clicks. Modelled on
@@ -784,7 +812,7 @@ function App() {
                     <button
                       key={slot.id}
                       className={`slot slot-${slot.shape} ${selectedSlot === slot.id ? "is-selected" : ""} ${tool === "edit-slots" ? "is-editable" : ""} ${outlineHidden(slot.id) ? "is-outline-hidden" : ""}`}
-                      style={{ ...slotStyle(slot), background: fill ?? undefined, cursor: tool === "edit-slots" ? "move" : "pointer" }}
+                      style={{ ...slotStyle(slot), background: fill ?? undefined, borderWidth: `${1.5 * invZoom}px`, cursor: tool === "edit-slots" ? "move" : "pointer" }}
                       onClick={(event) => { event.stopPropagation(); pickSlot(slot.id); }}
                       onPointerDown={(event) => {
                         if (tool === "edit-slots" && event.button === 0) {
@@ -844,7 +872,7 @@ function App() {
                         <span
                           key={index}
                           className="slot-handle"
-                          style={css}
+                          style={{ ...css, transform: `scale(${invZoom})` }}
                           role="slider"
                           tabIndex={0}
                           aria-label={`${slot.name} ${label} corner rounding`}
@@ -884,6 +912,40 @@ function App() {
 
                 {/* Point handles - the little dots. One per outline point, each
                     dragged directly to nudge that stretch of the edge. */}
+                {/* Grabbable edge. Press anywhere on the outline - not just on a
+                    dot - and a point is inserted right there and dragged, so a
+                    side can be pulled in or pushed out wherever you touch it.
+                    Sits under the dots, so an existing dot still wins. */}
+                {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
+                  const slot = slots.find((s) => s.id === selectedSlot);
+                  if (!slot) return null;
+                  const pts = slot.points?.length ? slot.points : samplePoints(slot);
+                  return (
+                    <svg
+                      className="slot-grab"
+                      style={slotStyle({ ...slot, points: undefined })}
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                      data-export-hide="true"
+                      onPointerDown={(event) => {
+                        const p = pointFromCursor(slot, event.clientX, event.clientY);
+                        if (!p) return;
+                        event.stopPropagation();
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                        const card = cardRef.current?.getBoundingClientRect();
+                        const aspect = card ? (slot.w * card.width) / (slot.h * card.height) : 1;
+                        const seg = nearestSegment(pts, p, aspect);
+                        const next = [...pts];
+                        next.splice(seg + 1, 0, p);
+                        setSlots(slots.map((s) => s.id === slot.id ? { ...s, points: next } : s));
+                        pointDragRef.current = { id: event.pointerId, slotId: slot.id, index: seg + 1 };
+                      }}
+                    >
+                      <polygon points={pts.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")} vectorEffect="non-scaling-stroke" />
+                    </svg>
+                  );
+                })()}
+
                 {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
                   const slot = slots.find((s) => s.id === selectedSlot);
                   if (!slot) return null;
@@ -898,7 +960,7 @@ function App() {
                         <span
                           key={i}
                           className="slot-point"
-                          style={{ left: `${px * 100}%`, top: `${py * 100}%` }}
+                          style={{ left: `${px * 100}%`, top: `${py * 100}%`, transform: `scale(${invZoom})` }}
                           title={`Point ${i + 1} of ${pts.length} - drag anywhere`}
                           aria-label={`Outline point ${i + 1}`}
                           onPointerDown={(event) => {
