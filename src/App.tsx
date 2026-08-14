@@ -927,7 +927,18 @@ function App() {
                     <button
                       key={slot.id}
                       className={`slot slot-${slot.shape} ${selectedSlot === slot.id ? "is-selected" : ""} ${tool === "edit-slots" ? "is-editable" : ""} ${outlineHidden(slot.id) ? "is-outline-hidden" : ""}`}
-                      style={{ ...slotStyle(slot), background: fill ?? undefined, borderWidth: `${1.5 * invZoom}px`, cursor: tool === "edit-slots" ? "move" : "pointer" }}
+                      style={{
+                        ...slotStyle(slot),
+                        // A point-edited slot is painted entirely by its SVG
+                        // polygon. Filling the button as well drew a second,
+                        // still-rectangular shape underneath - so colour stayed
+                        // out at the old box edge after the outline was pulled
+                        // in. This sits after the slotStyle spread, so it has to
+                        // repeat the transparency rather than rely on it.
+                        background: slot.points?.length ? "transparent" : (fill ?? undefined),
+                        borderWidth: `${1.5 * invZoom}px`,
+                        cursor: tool === "edit-slots" ? "move" : "pointer",
+                      }}
                       onClick={(event) => { event.stopPropagation(); pickSlot(slot.id); }}
                       onPointerDown={(event) => {
                         if (tool === "edit-slots" && event.button === 0) {
