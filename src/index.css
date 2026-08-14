@@ -815,3 +815,12 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
 .toggle-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .toggle-pair .field-button { margin-bottom: 8px; }
 .field-button.is-off { border-color: rgba(255, 60, 90, .5); color: #ff8fa2; }
+
+/* Touch input: a fingertip covers far more than a stylus tip, so the invisible
+   hit area grows while the dot itself stays small. Enlarging the visible dot
+   instead would hide the outline being edited - the whole problem with the
+   handles before. touch-action:none on the stage keeps the browser from
+   stealing a two-finger gesture for page zoom. */
+.coarse-pointer .slot-point::after { inset: -18px; }
+.coarse-pointer .slot-grab polygon { stroke-width: 30; }
+.canvas-stage, .game-card { touch-action: none; }

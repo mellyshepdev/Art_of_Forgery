@@ -562,7 +562,43 @@ function App() {
      path, and capture keeps the drag alive if the cursor leaves the stage. */
   const canPan = zoomLocked || tool === "hand";
 
+  /* Multi-touch. Every live pointer is tracked so two fingers can pinch to
+     zoom and drag to pan together - the trackpad is the thing making this work
+     painful, so the tablet needs to do more than emulate one. */
+  /* Sized for whatever is actually being used. A fingertip covers roughly a
+     40px circle; a stylus is precise to a pixel. Giving both the same 8px
+     target makes touch feel broken and pen feel imprecise. */
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  const livePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinch = useRef<{ dist: number; zoom: number; midX: number; midY: number; panX: number; panY: number } | null>(null);
+
+  const pinchGeometry = () => {
+    const pts = [...livePointers.current.values()];
+    if (pts.length < 2) return null;
+    const [a, b] = pts;
+    return {
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      midX: (a.x + b.x) / 2,
+      midY: (a.y + b.y) / 2,
+    };
+  };
+
+  const beginPinchIfReady = () => {
+    const g = pinchGeometry();
+    if (!g || g.dist === 0) return;
+    // A second finger cancels whatever one finger had started, so a pinch never
+    // drags a point across the card at the same time.
+    dragRef.current = null;
+    slotDragRef.current = null;
+    cornerDragRef.current = null;
+    pointDragRef.current = null;
+    pinch.current = { dist: g.dist, zoom, midX: g.midX, midY: g.midY, panX: pan.x, panY: pan.y };
+  };
+
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    setCoarsePointer(event.pointerType === "touch");
+    livePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (livePointers.current.size >= 2) { beginPinchIfReady(); return; }
     if (!canPan || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
@@ -591,6 +627,23 @@ function App() {
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (livePointers.current.has(event.pointerId)) {
+      livePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+    // Two fingers: scale by how much the gap changed, and pan by how much the
+    // midpoint moved, so zooming and repositioning happen in one gesture.
+    if (pinch.current && livePointers.current.size >= 2) {
+      const g = pinchGeometry();
+      if (g && g.dist > 0) {
+        event.preventDefault();
+        const p = pinch.current;
+        const next = Math.max(58, Math.min(ZOOM_MAX, p.zoom * (g.dist / p.dist)));
+        setZoom(Math.round(next));
+        setPan({ x: p.panX + (g.midX - p.midX), y: p.panY + (g.midY - p.midY) });
+      }
+      return;
+    }
+
     const pDrag = pointDragRef.current;
     if (pDrag && pDrag.id === event.pointerId) {
       event.preventDefault();
@@ -655,6 +708,9 @@ function App() {
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    livePointers.current.delete(event.pointerId);
+    if (livePointers.current.size < 2) pinch.current = null;
+
     const pDrag = pointDragRef.current;
     if (pDrag && pDrag.id === event.pointerId) {
       pointDragRef.current = null;
@@ -895,7 +951,7 @@ function App() {
                 transformOrigin: zoomOrigin,
               }}
             >
-              <div className={`game-card ${showGuides ? "show-guides" : ""}`} ref={cardRef} style={cardVariables}>
+              <div className={`game-card ${showGuides ? "show-guides" : ""} ${coarsePointer ? "coarse-pointer" : ""}`} ref={cardRef} style={cardVariables}>
                 <img className="template-plate" src={templateSrc(template)} alt={`${template.name} card frame`} />
 
                 {artUrl && (
@@ -1092,6 +1148,7 @@ function App() {
                           aria-label={`Outline point ${i + 1}`}
                           onPointerDown={(event) => {
                             event.stopPropagation();
+                            setCoarsePointer(event.pointerType === "touch");
                             event.currentTarget.setPointerCapture(event.pointerId);
                             if (!slot.points?.length) {
                               // Materialise on first grab, so the shape doesn't
