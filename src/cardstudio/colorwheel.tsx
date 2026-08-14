@@ -71,7 +71,10 @@ export function ColorWheel({
       const dy = clientY - cy;
       const radius = rect.width / 2;
       const dist = Math.min(Math.hypot(dx, dy), radius);
-      const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+      // conic-gradient's 0deg is 12 o'clock; atan2's 0 is 3 o'clock. Without
+      // the +90 the wheel returned a hue a quarter turn from the one under the
+      // cursor - clicking blue gave green, yellow gave pink.
+      const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
       const h = (angle + 360) % 360;
       const s = dist / radius;
       const next = { ...hsv, h, s };
@@ -96,7 +99,9 @@ export function ColorWheel({
   };
 
   const handleR = hsv.s * (size / 2);
-  const handleAngleRad = (hsv.h * Math.PI) / 180;
+  // -90 for the same reason as the pick maths below: the gradient's 0deg is at
+  // 12 o'clock while atan2/cos/sin measure from 3 o'clock.
+  const handleAngleRad = ((hsv.h - 90) * Math.PI) / 180;
   const handleX = size / 2 + handleR * Math.cos(handleAngleRad);
   const handleY = size / 2 + handleR * Math.sin(handleAngleRad);
 
