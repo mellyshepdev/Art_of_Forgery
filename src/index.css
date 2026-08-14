@@ -804,3 +804,8 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
 .template-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .template-chip.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .template-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* A disabled undo/redo has to look unavailable, or you click it and wonder
+   whether the app is broken or there is simply nothing left to undo. */
+.tool-button:disabled { opacity: .32; cursor: default; }
+.tool-button:disabled:hover { color: #858c87; border-color: transparent; background: transparent; }

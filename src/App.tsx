@@ -218,9 +218,15 @@ const defaultOpacity: Record<LayerId, number> = {
   frame: 100,
 };
 
-function ToolButton({ children, label, active = false, onClick }: { children: ReactNode; label: string; active?: boolean; onClick?: () => void }) {
+function ToolButton({ children, label, active = false, onClick, disabled = false }: { children: ReactNode; label: string; active?: boolean; onClick?: () => void; disabled?: boolean }) {
   return (
-    <button className={`tool-button ${active ? "is-active" : ""}`} title={label} aria-label={label} onClick={onClick}>
+    <button
+      className={`tool-button ${active ? "is-active" : ""}`}
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {children}
     </button>
   );
@@ -384,6 +390,84 @@ function App() {
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
   const cornerDragRef = useRef<{ id: number; slotId: number; corner: CornerIndex; startX: number; startY: number; startRadius: number } | null>(null);
   const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
+
+  /* ---- Undo / redo -------------------------------------------------------
+     Snapshots the editable state rather than recording individual operations:
+     every edit here is a whole-object replacement, so a snapshot is small and
+     cannot drift out of sync with the real state the way an operation log can.
+
+     Entries are committed on a short debounce, which is what makes a drag one
+     undo step instead of two hundred - a point drag fires a state change per
+     pointermove, and stepping back through those one pixel at a time would be
+     useless. */
+  type Snapshot = { slots: CardSlot[]; fill: Record<number, string>; opacity: Record<number, number> };
+  const history = useRef<Snapshot[]>([]);
+  const historyAt = useRef(-1);
+  const restoring = useRef(false);          // suppresses re-recording our own undo
+  const commitTimer = useRef<number | undefined>(undefined);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+
+  const syncHistoryButtons = () =>
+    setHistoryState({
+      canUndo: historyAt.current > 0,
+      canRedo: historyAt.current >= 0 && historyAt.current < history.current.length - 1,
+    });
+
+  useEffect(() => {
+    if (restoring.current) { restoring.current = false; return; }
+    window.clearTimeout(commitTimer.current);
+    commitTimer.current = window.setTimeout(() => {
+      const snap: Snapshot = { slots, fill: slotFill, opacity: slotOpacity };
+      const head = history.current[historyAt.current];
+      if (head && JSON.stringify(head) === JSON.stringify(snap)) return;
+      // Editing after undoing discards the redo tail, as in any editor.
+      history.current = history.current.slice(0, historyAt.current + 1);
+      history.current.push(snap);
+      if (history.current.length > 60) history.current.shift();   // bound the memory
+      historyAt.current = history.current.length - 1;
+      syncHistoryButtons();
+    }, 350);
+    return () => window.clearTimeout(commitTimer.current);
+  }, [slots, slotFill, slotOpacity]);
+
+  const applySnapshot = (snap: Snapshot) => {
+    restoring.current = true;
+    setSlots(snap.slots);
+    setSlotFill(snap.fill);
+    setSlotOpacity(snap.opacity);
+  };
+
+  const undo = () => {
+    window.clearTimeout(commitTimer.current);   // don't let a pending commit land after
+    if (historyAt.current <= 0) return;
+    historyAt.current -= 1;
+    applySnapshot(history.current[historyAt.current]);
+    syncHistoryButtons();
+    flash("Undo");
+  };
+
+  const redo = () => {
+    window.clearTimeout(commitTimer.current);
+    if (historyAt.current >= history.current.length - 1) return;
+    historyAt.current += 1;
+    applySnapshot(history.current[historyAt.current]);
+    syncHistoryButtons();
+    flash("Redo");
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+      const el = e.target as HTMLElement | null;
+      // Let the browser handle undo inside a field the user is typing in.
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
 
   /* Autosave every slot edit. Storage being full or blocked (private mode,
      locked-down browser) must not break editing, so failures are swallowed. */
@@ -701,8 +785,8 @@ function App() {
           <span>{cardName || "Untitled card"}</span><small>{template.name}</small>
         </div>
         <div className="top-actions">
-          <ToolButton label="Undo"><Undo2 size={17} /></ToolButton>
-          <ToolButton label="Redo"><Redo2 size={17} /></ToolButton>
+          <ToolButton label="Undo (Ctrl+Z)" onClick={undo} disabled={!historyState.canUndo}><Undo2 size={17} /></ToolButton>
+          <ToolButton label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!historyState.canRedo}><Redo2 size={17} /></ToolButton>
           <button className="save-button" onClick={() => flash("Draft saved to your workspace")}><Cloud size={15} /> Save</button>
           <div className="export-wrap">
             <button className="export-button" onClick={exportCard} disabled={isExporting}>
