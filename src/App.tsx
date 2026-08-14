@@ -2,7 +2,7 @@ import "./app.studio.css";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { toJpeg, toPng } from "html-to-image";
 import { cardTemplates, templateSrc } from "./data/cardTemplates";
-import { cardSlots as initialCardSlots, radiiOf, slotStyle, type CardSlot, type SlotRadii } from "./data/cardSlots";
+import { cardSlots as initialCardSlots, radiiOf, samplePoints, slotStyle, type CardSlot, type SlotPoint, type SlotRadii } from "./data/cardSlots";
 import { ColorWheel } from "./cardstudio/colorwheel";
 
 /** Colour a slot falls back to in the picker before one has been chosen. */
@@ -260,6 +260,7 @@ function App() {
   const dragRef = useRef<{ id: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
   const cornerDragRef = useRef<{ id: number; slotId: number; corner: CornerIndex; startX: number; startY: number; startRadius: number } | null>(null);
+  const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
 
   /* Autosave every slot edit. Storage being full or blocked (private mode,
      locked-down browser) must not break editing, so failures are swallowed. */
@@ -340,7 +341,38 @@ function App() {
     };
   };
 
+  /* Cursor -> a point's position inside the slot's own box, measured straight
+     off the rendered card. No deltas and no sign maths, so the handle sits
+     exactly under the pointer at any zoom and can't come out inverted. */
+  const pointFromCursor = (slot: CardSlot, clientX: number, clientY: number): SlotPoint | null => {
+    const card = cardRef.current?.getBoundingClientRect();
+    if (!card || !card.width || !card.height) return null;
+    const left = card.left + slot.x * card.width;
+    const top = card.top + slot.y * card.height;
+    const w = slot.w * card.width;
+    const h = slot.h * card.height;
+    if (!w || !h) return null;
+    // Allowed slightly outside the box so an outline can bulge past its bounds.
+    const clamp = (v: number) => Math.max(-0.5, Math.min(1.5, v));
+    return [clamp((clientX - left) / w), clamp((clientY - top) / h)];
+  };
+
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pDrag = pointDragRef.current;
+    if (pDrag && pDrag.id === event.pointerId) {
+      event.preventDefault();
+      const slot = slots.find((s) => s.id === pDrag.slotId);
+      if (!slot?.points) return;
+      const next = pointFromCursor(slot, event.clientX, event.clientY);
+      if (!next) return;
+      setSlots(slots.map((s) => {
+        if (s.id !== pDrag.slotId || !s.points) return s;
+        const points = s.points.map((p, i) => (i === pDrag.index ? next : p));
+        return { ...s, points };
+      }));
+      return;
+    }
+
     /* Reshaping a corner. Dragging the handle *inward* (toward the slot's
        centre) rounds that corner off; dragging it *outward* squares it up so
        the outline reaches into the corner and covers whatever sits there. */
@@ -390,6 +422,15 @@ function App() {
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pDrag = pointDragRef.current;
+    if (pDrag && pDrag.id === event.pointerId) {
+      pointDragRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+
     const cDrag = cornerDragRef.current;
     if (cDrag && cDrag.id === event.pointerId) {
       cornerDragRef.current = null;
@@ -650,12 +691,34 @@ function App() {
                   );
                 })}
 
+                {/* Dotted outline for point-edited slots. A CSS border would be
+                    clipped away along with the box, so the edge is drawn here
+                    instead - same dotted red, following the custom shape. */}
+                {slots.filter((s) => s.points?.length && !outlineHidden(s.id)).map((slot) => (
+                  <svg
+                    key={`outline-${slot.id}`}
+                    className="slot-outline"
+                    style={slotStyle({ ...slot, points: undefined })}
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                    data-export-hide="true"
+                  >
+                    <polygon
+                      points={slot.points!.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </svg>
+                ))}
+
                 {/* Corner handles for the selected slot. Siblings of the slot
                     buttons rather than children, because .slot is a <button>
                     and controls must not nest inside one. */}
                 {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
                   const slot = slots.find((s) => s.id === selectedSlot);
-                  if (!slot) return null;
+                  // Once an outline is point-edited, corner rounding no longer
+                  // describes it - the point handles take over.
+                  if (!slot || slot.points?.length) return null;
                   const radii = radiiOf(slot);
                   return (
                     <div className="slot-handles" style={slotStyle(slot)} data-export-hide="true">
@@ -694,6 +757,31 @@ function App() {
                               next[index] = clampRadius(next[index] + step);
                               return { ...s, radii: next };
                             }));
+                          }}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {/* Point handles - the little dots. One per outline point, each
+                    dragged directly to nudge that stretch of the edge. */}
+                {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
+                  const slot = slots.find((s) => s.id === selectedSlot);
+                  if (!slot?.points?.length) return null;
+                  return (
+                    <div className="slot-handles" style={slotStyle({ ...slot, points: undefined })} data-export-hide="true">
+                      {slot.points.map(([px, py], i) => (
+                        <span
+                          key={i}
+                          className="slot-point"
+                          style={{ left: `${px * 100}%`, top: `${py * 100}%` }}
+                          title={`Point ${i + 1} of ${slot.points!.length} - drag to fine-tune`}
+                          aria-label={`Outline point ${i + 1}`}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            event.currentTarget.setPointerCapture(event.pointerId);
+                            pointDragRef.current = { id: event.pointerId, slotId: slot.id, index: i };
                           }}
                         />
                       ))}
@@ -777,6 +865,37 @@ function App() {
                         </label>
                       ))}
                     </div>
+                  </section>
+
+                  <section className="property-section">
+                    <div className="section-label"><span>FINE TUNE</span></div>
+                    {slot.points?.length ? (
+                      <>
+                        <p className="property-note">
+                          {slot.points.length} points on this outline. Drag any dot on the card to
+                          nudge that stretch of the edge.
+                        </p>
+                        <button
+                          className="field-button subtle"
+                          onClick={() => setSlots(slots.map((s) => s.id === slot.id ? { ...s, points: undefined } : s))}
+                        >
+                          Back to corner rounding
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="property-note">
+                          Turns this outline into draggable points, starting from exactly the
+                          shape it has now. Use it for the areas corner rounding can't reach.
+                        </p>
+                        <button
+                          className="field-button"
+                          onClick={() => setSlots(slots.map((s) => s.id === slot.id ? { ...s, points: samplePoints(s) } : s))}
+                        >
+                          Add outline points
+                        </button>
+                      </>
+                    )}
                   </section>
 
                   <section className="property-section">

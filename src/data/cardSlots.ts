@@ -18,6 +18,10 @@ export type CardSlot = {
   /** all coords are fractions of the card, never pixels, so they hold at any size */
   x: number; y: number; w: number; h: number;
   radii?: SlotRadii;
+  /** Set once a slot has been fine-tuned point by point. Takes over from
+   *  `radii`, because an arbitrary outline can no longer be described by
+   *  corner rounding. */
+  points?: SlotPoint[];
 };
 
 /** What a slot's corners look like when it has no explicit radii. Mirrors the
@@ -26,6 +30,45 @@ export const defaultRadii = (shape: SlotShape): SlotRadii =>
   shape === "circle" ? [50, 50, 50, 50] : [3, 3, 3, 3];
 
 export const radiiOf = (s: CardSlot): SlotRadii => s.radii ?? defaultRadii(s.shape);
+
+/** A point on the slot's outline, as a fraction of the slot's own box.
+ *  [0,0] is its top-left corner, [1,1] its bottom-right. */
+export type SlotPoint = [number, number];
+
+/** Trace the slot's current rounded-rect outline into draggable points, so
+ *  fine-tuning starts from exactly the shape already on screen rather than
+ *  snapping to something else the moment you grab a point. */
+export const samplePoints = (s: CardSlot, perCorner = 5): SlotPoint[] => {
+  const [tl, tr, br, bl] = radiiOf(s).map((r) => Math.max(0, Math.min(50, r)) / 100);
+  const pts: SlotPoint[] = [];
+  // Each corner arc runs between two straight edges; centre is inset by the
+  // radius on both axes, and the sweep is a quarter turn.
+  const corners: { cx: number; cy: number; rx: number; ry: number; from: number }[] = [
+    { cx: tl,     cy: tl,     rx: tl, ry: tl, from: 180 },  // top-left
+    { cx: 1 - tr, cy: tr,     rx: tr, ry: tr, from: 270 },  // top-right
+    { cx: 1 - br, cy: 1 - br, rx: br, ry: br, from: 0   },  // bottom-right
+    { cx: bl,     cy: 1 - bl, rx: bl, ry: bl, from: 90  },  // bottom-left
+  ];
+  for (const { cx, cy, rx, ry, from } of corners) {
+    if (rx <= 0 && ry <= 0) {
+      // Square corner - the arc collapses to the corner point itself.
+      const x = from === 180 || from === 90 ? 0 : 1;
+      const y = from === 180 || from === 270 ? 0 : 1;
+      pts.push([x, y]);
+      continue;
+    }
+    for (let i = 0; i <= perCorner; i++) {
+      const a = ((from + (90 * i) / perCorner) * Math.PI) / 180;
+      pts.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]);
+    }
+  }
+  return pts.map(([x, y]) => [round5(x), round5(y)] as SlotPoint);
+};
+
+const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
+
+export const pointsToClipPath = (points: SlotPoint[]) =>
+  `polygon(${points.map(([x, y]) => `${round5(x * 100)}% ${round5(y * 100)}%`).join(", ")})`;
 
 /** The master grid. Shared by every template - this is what guarantees that
  *  switching template never moves a slot. */
@@ -61,4 +104,8 @@ export const slotStyle = (s: CardSlot) => ({
   // Only override the stylesheet once a slot has been reshaped by hand, so
   // untouched slots keep rendering exactly as .slot-circle / .slot-rect say.
   ...(s.radii ? { borderRadius: s.radii.map((r) => `${r}%`).join(" ") } : null),
+  // A point-edited outline can't be expressed as border-radius, so it clips
+  // instead. The dotted edge is drawn as an SVG overlay, because a CSS border
+  // gets clipped away with the box it belongs to.
+  ...(s.points?.length ? { clipPath: pointsToClipPath(s.points), borderColor: "transparent" } : null),
 });
