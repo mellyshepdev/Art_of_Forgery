@@ -75,6 +75,10 @@ export const pointsToClipPath = (points: SlotPoint[]) =>
 export const cardSlots: CardSlot[] = [
   { id: 1, name: "HP badge", shape: "circle", kind: "text", x: 0.05896, y: 0.04272, w: 0.14151, h: 0.08544 },
   { id: 2, name: "Name bar", shape: "rect", kind: "text", x: 0.23585, y: 0.04114, w: 0.62382, h: 0.04351 },
+  /* Second nameplate. "circle" on a wide box gives the oval - border-radius 50%
+     follows each axis, so it is an ellipse, not a circle. Sits in the gap
+     between the name bar (ends 0.08465) and the portrait (starts 0.11946). */
+  { id: 20, name: "Name plate 2", shape: "circle", kind: "text", x: 0.23585, y: 0.08650, w: 0.62382, h: 0.03100 },
   { id: 3, name: "Rank badge", shape: "circle", kind: "text", x: 0.84906, y: 0.03244, w: 0.13443, h: 0.08544 },
   { id: 4, name: "Rivet upper-left", shape: "circle", kind: "fill", x: 0.02948, y: 0.18354, w: 0.07075, h: 0.04747 },
   { id: 5, name: "Main portrait", shape: "circle", kind: "image", x: 0.12146, y: 0.11946, w: 0.77358, h: 0.41060 },

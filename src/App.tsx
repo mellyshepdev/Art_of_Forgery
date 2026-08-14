@@ -75,6 +75,35 @@ const loadSlots = (): CardSlot[] => {
   }
 };
 
+const FILLS_STORAGE_KEY = "card-creator.fills.v1";
+
+type FillState = { fill: Record<number, string>; opacity: Record<number, number>; recent: string[] };
+
+/** Colours and opacity persist separately from the slot grid: the grid is
+ *  headed for cardSlots.ts once the outlines are cemented, while colours stay
+ *  per-card. Same defensive read - anything malformed falls back to empty
+ *  rather than throwing on load. */
+const loadFills = (): FillState => {
+  const empty: FillState = { fill: {}, opacity: {}, recent: [] };
+  try {
+    const raw = localStorage.getItem(FILLS_STORAGE_KEY);
+    if (!raw) return empty;
+    const s = JSON.parse(raw) as Partial<FillState>;
+    const colours: Record<number, string> = {};
+    for (const [k, v] of Object.entries(s?.fill ?? {})) {
+      if (typeof v === "string" && HEX_RE.test(v)) colours[Number(k)] = v;
+    }
+    const alphas: Record<number, number> = {};
+    for (const [k, v] of Object.entries(s?.opacity ?? {})) {
+      if (typeof v === "number" && Number.isFinite(v)) alphas[Number(k)] = Math.max(0, Math.min(100, v));
+    }
+    const recent = Array.isArray(s?.recent) ? s.recent.filter((c) => typeof c === "string" && HEX_RE.test(c)).slice(0, 8) : [];
+    return { fill: colours, opacity: alphas, recent };
+  } catch {
+    return empty;
+  }
+};
+
 /** Emit the grid as the literal contents of cardSlots.ts, so a finished layout
  *  can be pasted back into source and stop depending on this browser. */
 const slotsToSource = (slots: CardSlot[]) => {
@@ -244,14 +273,18 @@ function App() {
   const outlineHidden = (id: number) => Boolean(hiddenOutlines[id]);
   const toggleOutline = (id: number) =>
     setHiddenOutlines((prev) => ({ ...prev, [id]: !prev[id] }));
-  const [slotFill, setSlotFill] = useState<Record<number, string>>({});
+  const [slotFill, setSlotFill] = useState<Record<number, string>>(() => loadFills().fill);
   /* Colours already used on the card, newest first. Colouring 19 slots means
      reaching for the same few shades repeatedly, and hunting for an exact
      match on the wheel a second time is the slow part. */
-  const [recentColors, setRecentColors] = useState<string[]>([]);
+  const [recentColors, setRecentColors] = useState<string[]>(() => loadFills().recent);
   /** Per-slot fill opacity, 0-100. Absent means fully opaque. */
-  const [slotOpacity, setSlotOpacity] = useState<Record<number, number>>({});
+  const [slotOpacity, setSlotOpacity] = useState<Record<number, number>>(() => loadFills().opacity);
   const opacityOf = (id: number) => slotOpacity[id] ?? 100;
+  /* Look slots up by id, never by array position. The artwork mask and the
+     subtitle used slots[4] / slots[1], which silently pointed at the wrong
+     slot the moment anything was inserted ahead of them. */
+  const slotOf = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
   /* The wheel is continuous - dragging it fires onChange constantly - so
      recents are only recorded when a colour is committed, not while scrubbing. */
   const setSlotColor = (id: number, hex: string) =>
@@ -282,6 +315,12 @@ function App() {
       localStorage.setItem(SLOTS_STORAGE_KEY, JSON.stringify(slots));
     } catch { /* editing still works, it just won't survive a reload */ }
   }, [slots]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILLS_STORAGE_KEY, JSON.stringify({ fill: slotFill, opacity: slotOpacity, recent: recentColors }));
+    } catch { /* colours just won't survive a reload */ }
+  }, [slotFill, slotOpacity, recentColors]);
 
   const resetSlots = () => {
     try { localStorage.removeItem(SLOTS_STORAGE_KEY); } catch { /* nothing to undo */ }
@@ -551,6 +590,7 @@ function App() {
     setTemplateIndex(0);
     setArtUrl(null);
     setSlotFill({});
+    setSlotOpacity({});   // otherwise a reset card keeps the old alphas
     setBorderUrl(null);
     setFrameUrl(null);
     setGraphicUrl(null);
@@ -663,7 +703,7 @@ function App() {
                 <img className="template-plate" src={templateSrc(template)} alt={`${template.name} card frame`} />
 
                 {artUrl && (
-                  <div className="slot-art" style={slotStyle(slots[4])}>
+                  <div className="slot-art" style={slotStyle(slotOf(5))}>
                     <img src={artUrl} alt="Card artwork" style={{ transform: `translate(${artX - 50}%, ${artY - 50}%) scale(${artScale / 100})` }} />
                   </div>
                 )}
@@ -804,7 +844,7 @@ function App() {
                 })()}
 
                 {cardSubtitle && (
-                  <div className="slot-subtitle" style={slotStyle(slots[1])}>{cardSubtitle}</div>
+                  <div className="slot-subtitle" style={slotStyle(slotOf(2))}>{cardSubtitle}</div>
                 )}
               </div>
             </div>
