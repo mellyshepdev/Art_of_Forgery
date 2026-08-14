@@ -9,6 +9,16 @@ import { ColorWheel } from "./cardstudio/colorwheel";
 const DEFAULT_FILL = "#b0c666";
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
+/** Fill colour + alpha as rgba(), so only the fill goes translucent - the
+ *  slot's text and outline keep their own opacity. CSS `opacity` on the slot
+ *  would fade those too. */
+const fillWithAlpha = (hex: string, alpha: number) => {
+  if (!HEX_RE.test(hex)) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const a = Math.max(0, Math.min(100, alpha)) / 100;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+};
+
 /** Corner handles, in the same order as CSS border-radius. */
 type CornerIndex = 0 | 1 | 2 | 3;
 const CORNERS: { index: CornerIndex; label: string; css: CSSProperties }[] = [
@@ -239,6 +249,9 @@ function App() {
      reaching for the same few shades repeatedly, and hunting for an exact
      match on the wheel a second time is the slow part. */
   const [recentColors, setRecentColors] = useState<string[]>([]);
+  /** Per-slot fill opacity, 0-100. Absent means fully opaque. */
+  const [slotOpacity, setSlotOpacity] = useState<Record<number, number>>({});
+  const opacityOf = (id: number) => slotOpacity[id] ?? 100;
   /* The wheel is continuous - dragging it fires onChange constantly - so
      recents are only recorded when a colour is committed, not while scrubbing. */
   const setSlotColor = (id: number, hex: string) =>
@@ -657,7 +670,8 @@ function App() {
                 {graphicUrl && <img className="custom-graphic" src={graphicUrl} alt="Custom border graphic" />}
 
                 {slots.map((slot) => {
-                  const fill = slotFill[slot.id];
+                  const rawFill = slotFill[slot.id];
+                  const fill = rawFill ? fillWithAlpha(rawFill, opacityOf(slot.id)) : undefined;
                   const text =
                     slot.id === 1 ? health :
                     slot.id === 2 ? cardName :
@@ -920,7 +934,7 @@ function App() {
                     <label className="hex-input">
                       <span
                         className="fill-swatch"
-                        style={{ background: slotFill[slot.id] ?? "transparent" }}
+                        style={{ background: slotFill[slot.id] ? fillWithAlpha(slotFill[slot.id], opacityOf(slot.id)) : "transparent" }}
                         aria-hidden="true"
                       />
                       <input
@@ -938,6 +952,23 @@ function App() {
                         onBlur={() => { const c = slotFill[slot.id]; if (c) rememberColor(c); }}
                       />
                     </label>
+
+                    <label className="range-label" htmlFor={`opacity-${slot.id}`}>
+                      <span>Opacity</span><output>{opacityOf(slot.id)}%</output>
+                    </label>
+                    <input
+                      id={`opacity-${slot.id}`}
+                      className="opacity-range"
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={opacityOf(slot.id)}
+                      // Checkerboard behind the track shows what the slider means
+                      // before you drag it: colour fading to the art underneath.
+                      style={{ ["--fill" as string]: slotFill[slot.id] ?? DEFAULT_FILL }}
+                      onChange={(e) => setSlotOpacity((prev) => ({ ...prev, [slot.id]: Number(e.target.value) }))}
+                    />
 
                     {recentColors.length > 0 && (
                       <div className="swatch-row" role="group" aria-label="Recent colours">
