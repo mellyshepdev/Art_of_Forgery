@@ -290,6 +290,50 @@ function App() {
      subtitle used slots[4] / slots[1], which silently pointed at the wrong
      slot the moment anything was inserted ahead of them. */
   const slotOf = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
+
+  /* Press-and-hold zooming. One step fires immediately so a plain click still
+     nudges, then after a short delay it repeats and accelerates - crossing
+     78% to 500% by clicking would otherwise be a lot of clicks. Modelled on
+     key-repeat: delay first, then speed up the longer you hold. */
+  const zoomHold = useRef<{ delay?: number; repeat?: number }>({});
+
+  const stopZoomHold = () => {
+    window.clearTimeout(zoomHold.current.delay);
+    window.clearInterval(zoomHold.current.repeat);
+    zoomHold.current = {};
+  };
+
+  const startZoomHold = (dir: 1 | -1) => {
+    stopZoomHold();
+    const bump = (multiplier: number) =>
+      setZoom((v) => {
+        const delta = zoomStep(v) * multiplier * dir;
+        return Math.max(58, Math.min(ZOOM_MAX, v + delta));
+      });
+    bump(1);                       // immediate, so a tap behaves like a click
+    zoomHold.current.delay = window.setTimeout(() => {
+      let ticks = 0;
+      zoomHold.current.repeat = window.setInterval(() => {
+        ticks += 1;
+        bump(ticks > 20 ? 3 : ticks > 8 ? 2 : 1);
+      }, 60);
+    }, 300);
+  };
+
+  /* Releasing outside the button, or tabbing away mid-hold, must still stop it -
+     otherwise the zoom runs away with nothing to halt it. */
+  useEffect(() => {
+    const stop = () => stopZoomHold();
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    window.addEventListener("blur", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("blur", stop);
+      stopZoomHold();
+    };
+  }, []);
   /* The wheel is continuous - dragging it fires onChange constantly - so
      recents are only recorded when a colour is committed, not while scrubbing. */
   const setSlotColor = (id: number, hex: string) =>
@@ -675,12 +719,27 @@ function App() {
             <div className="tool-group">
               <ToolButton label="Select tool" active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={16} /></ToolButton>
               <ToolButton label="Pan tool" active={tool === "hand"} onClick={() => setTool("hand")}><Hand size={16} /></ToolButton>
-              <ToolButton label="Edit Slots" active={tool === "edit-slots"} onClick={() => { setTool("edit-slots"); exitZoom(); }}><Frame size={16} /></ToolButton>
+              {/* Keeps the current zoom and selection. It used to call
+                  exitZoom(), which threw you back to 78% the moment you
+                  switched into the mode where close-up work happens. */}
+              <ToolButton label="Edit Slots" active={tool === "edit-slots"} onClick={() => setTool("edit-slots")}><Frame size={16} /></ToolButton>
             </div>
             <div className="zoom-control">
-              <button aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(58, value - zoomStep(value)))}><Minus size={14} /></button>
+              <button
+                aria-label="Zoom out"
+                onPointerDown={() => startZoomHold(-1)}
+                onPointerUp={stopZoomHold}
+                onPointerLeave={stopZoomHold}
+                onPointerCancel={stopZoomHold}
+              ><Minus size={14} /></button>
               <button className="zoom-value" onClick={() => setZoom(78)}>{zoom}%</button>
-              <button aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(ZOOM_MAX, value + zoomStep(value)))}><Plus size={14} /></button>
+              <button
+                aria-label="Zoom in"
+                onPointerDown={() => startZoomHold(1)}
+                onPointerUp={stopZoomHold}
+                onPointerLeave={stopZoomHold}
+                onPointerCancel={stopZoomHold}
+              ><Plus size={14} /></button>
             </div>
             <div className="tool-group canvas-options">
               <ToolButton label={showGuides ? "Hide slot guides" : "Show slot guides"} active={showGuides} onClick={() => setShowGuides((value) => !value)}><Frame size={16} /></ToolButton>
