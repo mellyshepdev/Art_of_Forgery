@@ -34,7 +34,7 @@ const CORNER_SIGNS: Record<CornerIndex, [number, number]> = {
 const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
 
 /** Zoom ceiling for close work on outline points. */
-const ZOOM_MAX = 500;
+const ZOOM_MAX = 700;
 /** Bigger jumps the further in you are - 5% steps from 78 to 500 is 85 clicks. */
 const zoomStep = (z: number) => (z < 100 ? 5 : z < 200 ? 10 : 25);
 
@@ -801,6 +801,37 @@ function App() {
                 )}
                 {graphicUrl && <img className="custom-graphic" src={graphicUrl} alt="Custom border graphic" />}
 
+                {/* Point-edited slots draw both their fill and their dotted edge
+                    as SVG geometry, before the slot buttons so text still sits
+                    on top. This is what lets colour reach a point dragged
+                    outside the slot's box - clip-path could only ever subtract
+                    from that box, so the fill used to stop short of the
+                    outline. overflow:visible is what permits it to paint out
+                    there. The dotted edge hides with the eye toggle; the fill
+                    does not, since judging the colour is the point of hiding it. */}
+                {slots.filter((s) => s.points?.length).map((slot) => {
+                  const raw = slotFill[slot.id];
+                  return (
+                    <svg
+                      key={`shape-${slot.id}`}
+                      className="slot-outline"
+                      style={slotStyle({ ...slot, points: undefined })}
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                    >
+                      <polygon
+                        points={slot.points!.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
+                        fill={raw ? fillWithAlpha(raw, opacityOf(slot.id)) : "none"}
+                        stroke={outlineHidden(slot.id) ? "none" : "rgba(255, 60, 90, .78)"}
+                        strokeWidth="1.5"
+                        strokeDasharray="3 3"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </svg>
+                  );
+                })}
+
                 {slots.map((slot) => {
                   const rawFill = slotFill[slot.id];
                   const fill = rawFill ? fillWithAlpha(rawFill, opacityOf(slot.id)) : undefined;
@@ -837,30 +868,10 @@ function App() {
                   );
                 })}
 
-                {/* Dotted outline for point-edited slots. A CSS border would be
-                    clipped away along with the box, so the edge is drawn here
-                    instead - same dotted red, following the custom shape. */}
-                {slots.filter((s) => s.points?.length && !outlineHidden(s.id)).map((slot) => (
-                  <svg
-                    key={`outline-${slot.id}`}
-                    className="slot-outline"
-                    style={slotStyle({ ...slot, points: undefined })}
-                    viewBox="0 0 100 100"
-                    preserveAspectRatio="none"
-                    aria-hidden="true"
-                    data-export-hide="true"
-                  >
-                    <polygon
-                      points={slot.points!.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  </svg>
-                ))}
-
                 {/* Corner handles for the selected slot. Siblings of the slot
                     buttons rather than children, because .slot is a <button>
                     and controls must not nest inside one. */}
-                {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
+                {tool === "edit-slots" && selectedSlot !== null && (() => {
                   const slot = slots.find((s) => s.id === selectedSlot);
                   // Once an outline is point-edited, corner rounding no longer
                   // describes it - the point handles take over.
@@ -916,7 +927,7 @@ function App() {
                     dot - and a point is inserted right there and dragged, so a
                     side can be pulled in or pushed out wherever you touch it.
                     Sits under the dots, so an existing dot still wins. */}
-                {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
+                {tool === "edit-slots" && selectedSlot !== null && (() => {
                   const slot = slots.find((s) => s.id === selectedSlot);
                   if (!slot) return null;
                   const pts = slot.points?.length ? slot.points : samplePoints(slot);
@@ -946,7 +957,7 @@ function App() {
                   );
                 })()}
 
-                {tool === "edit-slots" && selectedSlot !== null && !outlineHidden(selectedSlot) && (() => {
+                {tool === "edit-slots" && selectedSlot !== null && (() => {
                   const slot = slots.find((s) => s.id === selectedSlot);
                   if (!slot) return null;
                   /* Dots are always there on a selected outline - no button to

@@ -546,12 +546,9 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
   overflow: visible;
   pointer-events: none;
 }
-.slot-outline polygon {
-  fill: none;
-  stroke: rgba(255, 60, 90, .78);
-  stroke-width: 1.5;
-  stroke-dasharray: 3 3;
-}
+/* No fill/stroke rules here on purpose: CSS beats SVG presentation attributes,
+   so a `fill: none` here would silently override the inline fill and the shape
+   would never show its colour. Both are set inline in App.tsx. */
 
 /* The little dots. Bigger hit area than they look, so the hard-to-reach spots
    stay grabbable without making the outline noisy. */

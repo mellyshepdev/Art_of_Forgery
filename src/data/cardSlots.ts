@@ -108,8 +108,12 @@ export const slotStyle = (s: CardSlot) => ({
   // Only override the stylesheet once a slot has been reshaped by hand, so
   // untouched slots keep rendering exactly as .slot-circle / .slot-rect say.
   ...(s.radii ? { borderRadius: s.radii.map((r) => `${r}%`).join(" ") } : null),
-  // A point-edited outline can't be expressed as border-radius, so it clips
-  // instead. The dotted edge is drawn as an SVG overlay, because a CSS border
-  // gets clipped away with the box it belongs to.
-  ...(s.points?.length ? { clipPath: pointsToClipPath(s.points), borderColor: "transparent" } : null),
+  // A point-edited outline is drawn entirely in SVG - fill and edge both - so
+  // the element itself goes invisible and only carries hit-testing and text.
+  //
+  // It cannot use clip-path: clipping only ever *subtracts* from the element's
+  // box, so a point dragged outside the slot's rectangle showed an outline with
+  // no fill behind it. The colour has to be real geometry, not a clipped
+  // rectangle, or it stops at the box edge on the finished card.
+  ...(s.points?.length ? { borderColor: "transparent", background: "transparent" } : null),
 });
