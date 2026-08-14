@@ -14,9 +14,11 @@ RUN npm run build
 FROM httpd:2.4-alpine
 
 # Enable mod_rewrite for React client-side routing
+# The pattern has to capture the directive to put it back without the '#'.
 RUN sed -i \
-    's/^#$LoadModule rewrite_module modules\/mod_rewrite.so$/\1/' \
+    's|^#\(LoadModule rewrite_module modules/mod_rewrite.so\)|\1|' \
     /usr/local/apache2/conf/httpd.conf \
+    && grep -q '^LoadModule rewrite_module' /usr/local/apache2/conf/httpd.conf \
     && echo "Include conf/extra/spa.conf" \
     >> /usr/local/apache2/conf/httpd.conf
 
