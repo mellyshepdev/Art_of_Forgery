@@ -34,7 +34,7 @@ const CORNER_SIGNS: Record<CornerIndex, [number, number]> = {
 const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
 
 /** Zoom ceiling for close work on outline points. */
-const ZOOM_MAX = 700;
+const ZOOM_MAX = 1000;
 /** How far a point travels per unit of finger travel. Below 1 so a full sweep
  *  of the pad is a fraction of the card - the point of the tablet is fine
  *  control, not covering ground quickly. */
@@ -53,7 +53,7 @@ const safeCapture = (el: Element, pointerId: number) => {
   try { (el as HTMLElement).setPointerCapture(pointerId); } catch { /* synthetic pointer */ }
 };
 /** Bigger jumps the further in you are - 5% steps from 78 to 500 is 85 clicks. */
-const zoomStep = (z: number) => (z < 100 ? 5 : z < 200 ? 10 : 25);
+const zoomStep = (z: number) => (z < 100 ? 5 : z < 200 ? 10 : z < 500 ? 25 : 50);
 
 const SLOTS_STORAGE_KEY = "card-creator.slots.v1";
 
@@ -320,6 +320,23 @@ function App() {
      dots hide independently because they get in the way at different moments:
      the line when judging a fill colour, the dots when checking the finished
      shape. Neither is part of the layout, so neither is persisted. */
+  /* Tools that follow you into full screen. The side panels slide away there,
+     so anything not picked here is unreachable without leaving full screen -
+     which defeats the point of going full screen mid-adjustment. Persisted,
+     because it is a working preference rather than part of a card. */
+  type FsTool = "color" | "opacity" | "visibility" | "points";
+  const [fsTools, setFsTools] = useState<Record<FsTool, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem("card-creator.fstools.v1");
+      if (raw) return { color: true, opacity: true, visibility: true, points: false, ...JSON.parse(raw) };
+    } catch { /* fall through to defaults */ }
+    return { color: true, opacity: true, visibility: true, points: false };
+  });
+  const [fsPickerOpen, setFsPickerOpen] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem("card-creator.fstools.v1", JSON.stringify(fsTools)); } catch { /* ignore */ }
+  }, [fsTools]);
+
   const [showOutline, setShowOutline] = useState(true);
   const [showPoints, setShowPoints] = useState(true);
   const outlineHidden = (id: number) => Boolean(hiddenOutlines[id]);
@@ -1068,6 +1085,98 @@ function App() {
 
   return (
     <div className="app-shell" ref={canvasRef}>
+        {/* Tools carried into full screen. The side panels are gone there, so
+            this is the only way to reach the wheel or the opacity slider
+            without dropping out of full screen mid-adjustment. */}
+        {isFullscreen && selectedSlot !== null && (() => {
+          const slot = slots.find((s) => s.id === selectedSlot);
+          if (!slot) return null;
+          const raw = slotFill[slot.id];
+          return (
+            <div className="fs-dock" data-export-hide="true">
+              <div className="fs-dock-head">
+                <span>{slot.id}. {slot.name}</span>
+                <button
+                  className="inline-eye"
+                  title="Choose which tools appear here"
+                  aria-expanded={fsPickerOpen}
+                  onClick={() => setFsPickerOpen((v) => !v)}
+                ><Layers3 size={13} /></button>
+              </div>
+
+              {fsPickerOpen && (
+                <div className="fs-picker">
+                  {([
+                    ["color", "Colour wheel"],
+                    ["opacity", "Opacity"],
+                    ["visibility", "Line / dots"],
+                    ["points", "More dots"],
+                  ] as [FsTool, string][]).map(([key, label]) => (
+                    <label key={key} className="fs-check">
+                      <input
+                        type="checkbox"
+                        checked={fsTools[key]}
+                        onChange={(e) => setFsTools((t) => ({ ...t, [key]: e.target.checked }))}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {fsTools.color && (
+                <ColorWheel
+                  value={raw ?? DEFAULT_FILL}
+                  size={140}
+                  onChange={(hex) => setSlotColor(slot.id, hex)}
+                />
+              )}
+
+              {fsTools.opacity && (
+                <>
+                  <label className="range-label"><span>Opacity</span><output>{opacityOf(slot.id)}%</output></label>
+                  <input
+                    className="opacity-range"
+                    type="range" min={0} max={100} step={1}
+                    value={opacityOf(slot.id)}
+                    style={{ ["--fill" as string]: raw ?? DEFAULT_FILL }}
+                    onChange={(e) => setSlotOpacity((prev) => ({ ...prev, [slot.id]: Number(e.target.value) }))}
+                  />
+                </>
+              )}
+
+              {fsTools.visibility && (
+                <div className="toggle-pair">
+                  <button className={showOutline ? "field-button subtle" : "field-button subtle is-off"}
+                          onClick={() => setShowOutline((v) => !v)}>
+                    {showOutline ? "Hide line" : "Show line"}
+                  </button>
+                  <button className={showPoints ? "field-button subtle" : "field-button subtle is-off"}
+                          onClick={() => setShowPoints((v) => !v)}>
+                    {showPoints ? "Hide dots" : "Show dots"}
+                  </button>
+                </div>
+              )}
+
+              {fsTools.points && (
+                <button
+                  className="field-button"
+                  onClick={() => setSlots(slots.map((sl) => {
+                    if (sl.id !== slot.id) return sl;
+                    const base = sl.points?.length ? sl.points : samplePoints(sl);
+                    const denser: SlotPoint[] = [];
+                    base.forEach((pt, i) => {
+                      const q = base[(i + 1) % base.length];
+                      denser.push(pt, [(pt[0] + q[0]) / 2, (pt[1] + q[1]) / 2]);
+                    });
+                    return { ...sl, points: denser };
+                  }))}
+                >More dots</button>
+              )}
+            </div>
+          );
+        })()}
+
         {/* The tablet's cursor. pointer-events:none is essential - if it could
             be hit, elementFromPoint would return the cursor itself and every
             event would land on it instead of the control underneath. */}
