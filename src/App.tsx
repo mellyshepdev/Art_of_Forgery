@@ -614,11 +614,23 @@ function App() {
       return;
     }
     if (msg.kind === "pan") {
-      // Move the card itself. Scrolling the page under the cursor was wrong -
-      // the card is the thing being positioned, and at 1000% zoom the page has
-      // nowhere to scroll to anyway.
-      const k = 900;
-      setPan((p) => ({ x: p.x + (msg.dx ?? 0) * k, y: p.y + (msg.dy ?? 0) * k }));
+      const at = padCursorRef.current;
+      const el = document.elementFromPoint(at.x, at.y);
+      // Over the canvas, two fingers move the card. Anywhere else - the side
+      // panels, the full-screen dock - they scroll it. Panning unconditionally
+      // left the panels with no way to scroll at all from the tablet, since the
+      // pad is the only pointer there.
+      const overCanvas = Boolean(el?.closest(".canvas-area"));
+      if (overCanvas) {
+        const k = 900;
+        setPan((p) => ({ x: p.x + (msg.dx ?? 0) * k, y: p.y + (msg.dy ?? 0) * k }));
+      } else {
+        el?.dispatchEvent(new WheelEvent("wheel", {
+          bubbles: true, cancelable: true,
+          deltaX: -(msg.dx ?? 0) * 900, deltaY: -(msg.dy ?? 0) * 900,
+          clientX: at.x, clientY: at.y,
+        }));
+      }
       return;
     }
     if (msg.kind === "rotate" && typeof msg.rotate === "number") {
@@ -792,18 +804,34 @@ function App() {
   const [dotCursor, setDotCursor] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  /* Panels-away without the Fullscreen API. Browsers only grant full screen on
+     transient user activation, which a synthesised pointer event never carries -
+     so the tablet cursor can never obtain it, however real the click looks.
+     Hiding the panels needs no permission, so the tablet still gets the room
+     even when the browser refuses the rest. */
+  const [focusMode, setFocusMode] = useState(false);
+  const panelsAway = isFullscreen || focusMode;
 
   const toggleFullscreen = () => {
     const el = canvasRef.current;
     if (!el) return;
+    setFocusMode((v) => !v);            // always works, gesture or not
     if (document.fullscreenElement) document.exitFullscreen?.();
-    else el.requestFullscreen?.().catch(() => flash("Full screen was blocked by the browser"));
+    else el.requestFullscreen?.().catch(() =>
+      // Browsers require transient user activation, which a synthesised pointer
+      // event does not carry - so this always fails when clicked with the
+      // tablet cursor, however real the click looks.
+      flash("Panels hidden - browser full screen needs a click on this device"));
   };
 
   // Esc and the browser's own controls exit without telling us, so track the
   // document rather than assuming our button is the only way out.
   useEffect(() => {
-    const sync = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    const sync = () => {
+      const on = Boolean(document.fullscreenElement);
+      setIsFullscreen(on);
+      if (!on) setFocusMode(false);   // Esc restores the panels too
+    };
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
@@ -1115,7 +1143,7 @@ function App() {
         {/* Tools carried into full screen. The side panels are gone there, so
             this is the only way to reach the wheel or the opacity slider
             without dropping out of full screen mid-adjustment. */}
-        {isFullscreen && selectedSlot !== null && (() => {
+        {panelsAway && selectedSlot !== null && (() => {
           const slot = slots.find((s) => s.id === selectedSlot);
           if (!slot) return null;
           const raw = slotFill[slot.id];
@@ -1249,7 +1277,7 @@ function App() {
         </div>
       </header>
 
-      <div className={`workspace ${isFullscreen ? "panels-away" : ""}`}>
+      <div className={`workspace ${panelsAway ? "panels-away" : ""}`}>
         <aside className="layers-panel">
           <div className="panel-heading"><span>AREAS (SLOTS)</span><button onClick={() => { console.log(JSON.stringify(slots, null, 2)); flash("Slots JSON logged to console!"); }}>Export JSON</button></div>
           <div className="layer-stack">
@@ -1312,10 +1340,10 @@ function App() {
                 onClick={() => setDotCursor((v) => !v)}
               ><Crosshair size={16} /></ToolButton>
               <ToolButton
-                label={isFullscreen ? "Exit full screen (Esc)" : "Full screen canvas"}
-                active={isFullscreen}
+                label={panelsAway ? "Show panels" : "Hide panels / full screen"}
+                active={panelsAway}
                 onClick={toggleFullscreen}
-              >{isFullscreen ? <Shrink size={16} /> : <Expand size={16} />}</ToolButton>
+              >{panelsAway ? <Shrink size={16} /> : <Expand size={16} />}</ToolButton>
             </div>
           </div>
 
