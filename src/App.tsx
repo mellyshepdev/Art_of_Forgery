@@ -35,6 +35,10 @@ const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
 
 /** Zoom ceiling for close work on outline points. */
 const ZOOM_MAX = 700;
+/** How far a point travels per unit of finger travel. Below 1 so a full sweep
+ *  of the pad is a fraction of the card - the point of the tablet is fine
+ *  control, not covering ground quickly. */
+const PAD_SENSITIVITY = 0.35;
 /** Bigger jumps the further in you are - 5% steps from 78 to 500 is 85 clicks. */
 const zoomStep = (z: number) => (z < 100 ? 5 : z < 200 ? 10 : 25);
 
@@ -414,7 +418,7 @@ function App() {
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
   const cornerDragRef = useRef<{ id: number; slotId: number; corner: CornerIndex; startX: number; startY: number; startRadius: number } | null>(null);
   const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
-  const padDragRef = useRef<{ slotId: number; index: number } | null>(null);
+  const padDragRef = useRef<{ slotId: number; index: number; startPad: SlotPoint; startPoint: SlotPoint } | null>(null);
   const [padState, setPadState] = useState<"off" | "connecting" | "live">("off");
   const padSocket = useRef<WebSocket | null>(null);
 
@@ -480,44 +484,58 @@ function App() {
 
   const applyPadSample = (msg: { phase?: string; x?: number; y?: number }) => {
     if (selectedSlot === null) {
-      // Silence here reads as "the pad is broken". Say what is actually wrong.
       if (msg.phase === "down") flash("Pad connected - select a slot in Edit Slots first");
       return;
     }
     const slot = slots.find((s) => s.id === selectedSlot);
     if (!slot || typeof msg.x !== "number" || typeof msg.y !== "number") return;
-    const local = padPointToSlot(slot, msg.x, msg.y);
-    if (!local) return;
 
     if (msg.phase === "down") {
       const pts = slot.points?.length ? slot.points : samplePoints(slot);
-      // Grab a nearby point if there is one, otherwise open a new one on the
-      // edge - the same choice the mouse makes between a dot and the grab band.
-      let nearest = -1, best = Infinity;
+      // Grab the nearest point outright - never insert. Absolute positioning
+      // plus insert-on-miss meant every touch either teleported a point or
+      // scattered a new one into the outline. Adding points stays a deliberate
+      // act you do on the card, not a side effect of putting a finger down.
+      let nearest = 0, best = Infinity;
       pts.forEach((pt, i) => {
-        const d = Math.hypot((pt[0] - local[0]) * slot.w, (pt[1] - local[1]) * slot.h);
+        const d = Math.hypot((pt[0] - 0.5) * slot.w, (pt[1] - 0.5) * slot.h);
+        void d;
+      });
+      // Nearest to where the finger landed, measured in card space so a wide
+      // slot does not bias the choice toward its short axis.
+      const padCard: SlotPoint = [msg.x, msg.y];
+      pts.forEach((pt, i) => {
+        const cx = slot.x + pt[0] * slot.w;
+        const cy = slot.y + pt[1] * slot.h;
+        const d = Math.hypot(cx - padCard[0], cy - padCard[1]);
         if (d < best) { best = d; nearest = i; }
       });
-      const GRAB = 0.02;                       // in card units, ~2% of the card
-      if (nearest >= 0 && best <= GRAB) {
-        setSlots(slots.map((sl) => sl.id === slot.id ? { ...sl, points: pts } : sl));
-        padDragRef.current = { slotId: slot.id, index: nearest };
-      } else {
-        const aspect = (slot.w * 744) / (slot.h * 1056);
-        const seg = nearestSegment(pts, local, aspect);
-        const next = [...pts];
-        next.splice(seg + 1, 0, local);
-        setSlots(slots.map((sl) => sl.id === slot.id ? { ...sl, points: next } : sl));
-        padDragRef.current = { slotId: slot.id, index: seg + 1 };
-      }
+      setSlots(slots.map((sl) => sl.id === slot.id ? { ...sl, points: pts } : sl));
+      padDragRef.current = {
+        slotId: slot.id,
+        index: nearest,
+        startPad: padCard,
+        startPoint: pts[nearest],
+      };
       return;
     }
 
     if (msg.phase === "move" && padDragRef.current) {
       const d = padDragRef.current;
+      // Relative, not absolute: the point moves by how far the finger moved,
+      // scaled down, so nothing jumps and small nudges are actually possible.
+      const dxCard = (msg.x - d.startPad[0]) * PAD_SENSITIVITY;
+      const dyCard = (msg.y - d.startPad[1]) * PAD_SENSITIVITY;
       setSlots(slots.map((sl) => {
         if (sl.id !== d.slotId || !sl.points) return sl;
-        return { ...sl, points: sl.points.map((pt, i) => (i === d.index ? local : pt)) };
+        return {
+          ...sl,
+          points: sl.points.map((pt, i) =>
+            i === d.index
+              ? [d.startPoint[0] + dxCard / (sl.w || 1), d.startPoint[1] + dyCard / (sl.h || 1)] as SlotPoint
+              : pt,
+          ),
+        };
       }));
       return;
     }
