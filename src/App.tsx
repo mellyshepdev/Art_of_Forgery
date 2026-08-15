@@ -443,6 +443,8 @@ function App() {
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [zoomLocked, setZoomLocked] = useState(false);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  /** Card rotation in degrees, driven by twisting two fingers on the pad. */
+  const [rotation, setRotation] = useState(0);
   const [slots, setSlots] = useState<CardSlot[]>(loadSlots);
   const dragRef = useRef<{ id: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
@@ -606,19 +608,21 @@ function App() {
      each render, and the socket calls through it. */
   /* Two-finger gestures arrive as their own message rather than as pointer
      samples, so the pad never has to guess whether two fingers meant a drag. */
-  const applyPadGesture = (msg: { kind?: string; scale?: number; dy?: number; dx?: number }) => {
+  const applyPadGesture = (msg: { kind?: string; scale?: number; dy?: number; dx?: number; rotate?: number }) => {
     if (msg.kind === "zoom" && typeof msg.scale === "number" && msg.scale > 0) {
       setZoom((z) => Math.round(Math.max(58, Math.min(ZOOM_MAX, z * msg.scale!))));
       return;
     }
-    if (msg.kind === "scroll") {
-      const at = padCursorRef.current;
-      const el = document.elementFromPoint(at.x, at.y);
-      el?.dispatchEvent(new WheelEvent("wheel", {
-        bubbles: true, cancelable: true,
-        deltaX: (msg.dx ?? 0) * 600, deltaY: (msg.dy ?? 0) * 600,
-        clientX: at.x, clientY: at.y,
-      }));
+    if (msg.kind === "pan") {
+      // Move the card itself. Scrolling the page under the cursor was wrong -
+      // the card is the thing being positioned, and at 1000% zoom the page has
+      // nowhere to scroll to anyway.
+      const k = 900;
+      setPan((p) => ({ x: p.x + (msg.dx ?? 0) * k, y: p.y + (msg.dy ?? 0) * k }));
+      return;
+    }
+    if (msg.kind === "rotate" && typeof msg.rotate === "number") {
+      setRotation((r) => r + msg.rotate!);
     }
   };
   /* Selecting a slot from the tablet. Its own message rather than a synthetic
@@ -760,6 +764,7 @@ function App() {
   };
 
   const exitZoom = () => {
+    setRotation(0);          // straighten the card when fitting to canvas
     setZoomLocked(false);
     setSelectedSlot(null);
     setZoom(78);
@@ -848,16 +853,38 @@ function App() {
      off the rendered card. No deltas and no sign maths, so the handle sits
      exactly under the pointer at any zoom and can't come out inverted. */
   const pointFromCursor = (slot: CardSlot, clientX: number, clientY: number): SlotPoint | null => {
-    const card = cardRef.current?.getBoundingClientRect();
-    if (!card || !card.width || !card.height) return null;
-    const left = card.left + slot.x * card.width;
-    const top = card.top + slot.y * card.height;
-    const w = slot.w * card.width;
-    const h = slot.h * card.height;
+    const el = cardRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+
+    // Rotating the stage means the bounding rect is an axis-aligned box around
+    // a tilted card, so its width and height are no longer the card's. Its
+    // centre is still the card's centre though (the rotation is about centre),
+    // so measure from there and undo the rotation before converting.
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const rad = (-rotation * Math.PI) / 180;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const ux = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const uy = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    // Un-rotated on-screen size comes from the layout size times the zoom,
+    // never from the bounding rect, which is inflated by the rotation.
+    const scale = zoom / 100;
+    const cardW = el.offsetWidth * scale;
+    const cardH = el.offsetHeight * scale;
+    if (!cardW || !cardH) return null;
+
+    const nx = 0.5 + ux / cardW;   // fraction across the whole card
+    const ny = 0.5 + uy / cardH;
+
+    const w = slot.w, h = slot.h;
     if (!w || !h) return null;
-    // Deliberately unclamped: a point may go anywhere on the card, so an
-    // outline can reach right around a neighbouring object.
-    return [(clientX - left) / w, (clientY - top) / h];
+    // Deliberately unclamped: a point may go anywhere so an outline can reach
+    // right around a neighbouring object.
+    return [(nx - slot.x) / w, (ny - slot.y) / h];
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1303,7 +1330,7 @@ function App() {
             <div
               className="card-transform"
               style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`,
+                transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rotation}deg) scale(${zoom / 100})`,
                 transformOrigin: zoomOrigin,
               }}
             >
