@@ -41,6 +41,8 @@ const ZOOM_MAX = 700;
 const PAD_SENSITIVITY = 0.9;
 /** Kept out of the range real pointers use. */
 const PAD_POINTER_ID = 4242;
+/** Screen pixels of travel still counted as a tap rather than a drag. */
+const PAD_CLICK_SLOP = 9;
 
 /** Pointer capture only works for a pointer the browser is actually tracking.
  *  Events synthesised for the tablet cursor are not, so the call throws
@@ -431,7 +433,7 @@ function App() {
   const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
   const [padCursor, setPadCursor] = useState({ x: 400, y: 300 });
   const padCursorRef = useRef({ x: 400, y: 300 });
-  const padPress = useRef<{ lastPad: [number, number]; moved: boolean } | null>(null);
+  const padPress = useRef<{ lastPad: [number, number]; travel: number } | null>(null);
   const padLastFree = useRef<[number, number]>([0.5, 0.5]);
   const [padState, setPadState] = useState<"off" | "connecting" | "live">("off");
   const padSocket = useRef<WebSocket | null>(null);
@@ -507,7 +509,7 @@ function App() {
     const vw = window.innerWidth, vh = window.innerHeight;
 
     if (msg.phase === "down") {
-      padPress.current = { lastPad: [msg.x, msg.y], moved: false };
+      padPress.current = { lastPad: [msg.x, msg.y], travel: 0 };
       const at = padCursorRef.current;
       dispatchPad("pointerdown", at.x, at.y, true);
       return;
@@ -526,9 +528,17 @@ function App() {
       };
       padCursorRef.current = next;
       setPadCursor(next);
-      if (press) { press.lastPad = [msg.x, msg.y]; press.moved = true; }
+      if (press) { press.lastPad = [msg.x, msg.y]; press.travel += Math.hypot(dx, dy); }
       else padLastFree.current = [msg.x, msg.y];
       dispatchPad("pointermove", next.x, next.y, Boolean(press));
+      return;
+    }
+
+    if (msg.phase === "dbltap") {
+      const at = padCursorRef.current;
+      dispatchPad("pointerdown", at.x, at.y, true);
+      dispatchPad("pointerup", at.x, at.y, false);
+      dispatchPad("click", at.x, at.y, false);
       return;
     }
 
@@ -537,7 +547,10 @@ function App() {
       const press = padPress.current;
       dispatchPad("pointerup", at.x, at.y, false);
       // A press that never moved is a click - that is how you work a button.
-      if (press && !press.moved) dispatchPad("click", at.x, at.y, false);
+      // Distance, not "did it move at all": a finger tap always jitters a
+      // pixel or two, so any-movement meant a tap never counted as a click and
+      // no button could be pressed from the tablet.
+      if (press && press.travel < PAD_CLICK_SLOP) dispatchPad("click", at.x, at.y, false);
       padPress.current = null;
       padLastFree.current = [msg.x, msg.y];
     }
@@ -561,6 +574,26 @@ function App() {
      that render's state forever - selecting a slot afterwards never reached it
      and every sample was dropped. This ref is repointed at the newest handler
      each render, and the socket calls through it. */
+  /* Two-finger gestures arrive as their own message rather than as pointer
+     samples, so the pad never has to guess whether two fingers meant a drag. */
+  const applyPadGesture = (msg: { kind?: string; scale?: number; dy?: number; dx?: number }) => {
+    if (msg.kind === "zoom" && typeof msg.scale === "number" && msg.scale > 0) {
+      setZoom((z) => Math.round(Math.max(58, Math.min(ZOOM_MAX, z * msg.scale!))));
+      return;
+    }
+    if (msg.kind === "scroll") {
+      const at = padCursorRef.current;
+      const el = document.elementFromPoint(at.x, at.y);
+      el?.dispatchEvent(new WheelEvent("wheel", {
+        bubbles: true, cancelable: true,
+        deltaX: (msg.dx ?? 0) * 600, deltaY: (msg.dy ?? 0) * 600,
+        clientX: at.x, clientY: at.y,
+      }));
+    }
+  };
+  const applyPadGestureRef = useRef(applyPadGesture);
+  applyPadGestureRef.current = applyPadGesture;
+
   const applyPadRef = useRef(applyPadSample);
   applyPadRef.current = applyPadSample;
 
@@ -581,6 +614,7 @@ function App() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.t === "ptr") applyPadRef.current(msg);
+        else if (msg.t === "gesture") applyPadGestureRef.current(msg);
       } catch { /* a malformed frame must not kill the socket */ }
     };
   };
