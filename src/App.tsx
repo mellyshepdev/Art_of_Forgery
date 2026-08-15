@@ -433,7 +433,8 @@ function App() {
   const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
   const [padCursor, setPadCursor] = useState({ x: 400, y: 300 });
   const padCursorRef = useRef({ x: 400, y: 300 });
-  const padPress = useRef<{ lastPad: [number, number]; travel: number } | null>(null);
+  const padHeld = useRef(false);
+  const [padDown, setPadDown] = useState(false);
   const padLastFree = useRef<[number, number]>([0.5, 0.5]);
   const [padState, setPadState] = useState<"off" | "connecting" | "live">("off");
   const padSocket = useRef<WebSocket | null>(null);
@@ -507,51 +508,60 @@ function App() {
   const applyPadSample = (msg: { phase?: string; x?: number; y?: number }) => {
     if (typeof msg.x !== "number" || typeof msg.y !== "number") return;
     const vw = window.innerWidth, vh = window.innerHeight;
+    const at = padCursorRef.current;
 
-    if (msg.phase === "down") {
-      padPress.current = { lastPad: [msg.x, msg.y], travel: 0 };
-      const at = padCursorRef.current;
-      dispatchPad("pointerdown", at.x, at.y, true);
-      return;
-    }
-
+    // Moving a finger used to press the button down, so every cursor movement
+    // was a drag and panned the card. Now the finger only ever moves the
+    // cursor; pressing is a separate, deliberate gesture.
     if (msg.phase === "move") {
-      const press = padPress.current;
-      // Relative movement: a full sweep of the pad crosses a fraction of the
-      // screen, which is the whole point of using a tablet for fine work.
-      const from = press ? press.lastPad : padLastFree.current;
+      const from = padLastFree.current;
       const dx = (msg.x - from[0]) * vw * PAD_SENSITIVITY;
       const dy = (msg.y - from[1]) * vh * PAD_SENSITIVITY;
       const next = {
-        x: Math.max(0, Math.min(vw - 1, padCursorRef.current.x + dx)),
-        y: Math.max(0, Math.min(vh - 1, padCursorRef.current.y + dy)),
+        x: Math.max(0, Math.min(vw - 1, at.x + dx)),
+        y: Math.max(0, Math.min(vh - 1, at.y + dy)),
       };
       padCursorRef.current = next;
       setPadCursor(next);
-      if (press) { press.lastPad = [msg.x, msg.y]; press.travel += Math.hypot(dx, dy); }
-      else padLastFree.current = [msg.x, msg.y];
-      dispatchPad("pointermove", next.x, next.y, Boolean(press));
+      padLastFree.current = [msg.x, msg.y];
+      // buttons reflects whether a grab is actually held, so hovering stays
+      // hovering and a drag keeps reporting itself as one.
+      dispatchPad("pointermove", next.x, next.y, padHeld.current);
       return;
     }
 
-    if (msg.phase === "dbltap") {
-      const at = padCursorRef.current;
+    // A finger touching down only re-anchors the movement origin. Without this
+    // the next move is measured from wherever the finger last left the glass
+    // and the cursor leaps across the screen.
+    if (msg.phase === "down") {
+      padLastFree.current = [msg.x, msg.y];
+      return;
+    }
+
+    if (msg.phase === "tap") {
       dispatchPad("pointerdown", at.x, at.y, true);
       dispatchPad("pointerup", at.x, at.y, false);
       dispatchPad("click", at.x, at.y, false);
       return;
     }
 
+    // Double-tap-and-hold grabs: the press stays down while the finger moves,
+    // which is what makes dragging the card, a slot or a point possible without
+    // every stray movement doing it by accident.
+    if (msg.phase === "dragstart") {
+      padLastFree.current = [msg.x, msg.y];
+      padHeld.current = true;
+      setPadDown(true);
+      dispatchPad("pointerdown", at.x, at.y, true);
+      return;
+    }
+
     if (msg.phase === "up") {
-      const at = padCursorRef.current;
-      const press = padPress.current;
-      dispatchPad("pointerup", at.x, at.y, false);
-      // A press that never moved is a click - that is how you work a button.
-      // Distance, not "did it move at all": a finger tap always jitters a
-      // pixel or two, so any-movement meant a tap never counted as a click and
-      // no button could be pressed from the tablet.
-      if (press && press.travel < PAD_CLICK_SLOP) dispatchPad("click", at.x, at.y, false);
-      padPress.current = null;
+      if (padHeld.current) {
+        dispatchPad("pointerup", at.x, at.y, false);
+        padHeld.current = false;
+        setPadDown(false);
+      }
       padLastFree.current = [msg.x, msg.y];
     }
   };
@@ -1058,7 +1068,7 @@ function App() {
             event would land on it instead of the control underneath. */}
         {padState === "live" && (
           <div
-            className={`pad-cursor ${padPress.current ? "is-down" : ""}`}
+            className={`pad-cursor ${padDown ? "is-down" : ""}`}
             style={{ left: padCursor.x, top: padCursor.y }}
             aria-hidden="true"
             data-export-hide="true"
