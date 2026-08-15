@@ -739,7 +739,7 @@ function App() {
      dragging a whole slot, useless for placing a point. The dot is 16px with
      its hotspot dead centre. */
   const [dotCursor, setDotCursor] = useState(false);
-  const canvasRef = useRef<HTMLElement | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const toggleFullscreen = () => {
@@ -1038,7 +1038,7 @@ function App() {
   } as CSSProperties;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" ref={canvasRef}>
         {/* The tablet's cursor. pointer-events:none is essential - if it could
             be hit, elementFromPoint would return the cursor itself and every
             event would land on it instead of the control underneath. */}
@@ -1084,7 +1084,7 @@ function App() {
         </div>
       </header>
 
-      <div className="workspace">
+      <div className={`workspace ${isFullscreen ? "panels-away" : ""}`}>
         <aside className="layers-panel">
           <div className="panel-heading"><span>AREAS (SLOTS)</span><button onClick={() => { console.log(JSON.stringify(slots, null, 2)); flash("Slots JSON logged to console!"); }}>Export JSON</button></div>
           <div className="layer-stack">
@@ -1101,7 +1101,7 @@ function App() {
           </div>
         </aside>
 
-        <main className={`canvas-area ${dotCursor ? "cursor-dot" : ""}`} ref={canvasRef}>
+        <main className={`canvas-area ${dotCursor ? "cursor-dot" : ""}`}>
           <div className="canvas-toolbar">
             <div className="tool-group">
               <ToolButton label="Select tool" active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={16} /></ToolButton>

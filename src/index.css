@@ -864,3 +864,38 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
 }
 .pad-cursor.is-down { transform: scale(.7); border-color: #ff3c5a; }
 .pad-cursor.is-down::after { background: #ff3c5a; }
+
+/* Full screen collapses the side panels rather than hiding them abruptly: the
+   grid columns and the panels themselves animate, so the canvas visibly takes
+   the space instead of the layout snapping and losing your place.
+
+   Panels keep their width and slide out under overflow, rather than being
+   re-laid-out to zero - reflowing their contents mid-animation would make the
+   text reflow and jitter on the way out. */
+.workspace {
+  transition: grid-template-columns 260ms cubic-bezier(.22, .61, .36, 1);
+}
+.workspace.panels-away { grid-template-columns: 0 1fr 0; }
+
+.layers-panel, .properties-panel {
+  overflow: hidden;
+  transition: transform 260ms cubic-bezier(.22, .61, .36, 1), opacity 200ms ease;
+}
+.workspace.panels-away .layers-panel {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.workspace.panels-away .properties-panel {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The shell is what goes full screen now, so it must paint its own ground and
+   fill the viewport - it is no longer sitting inside the page. */
+.app-shell:fullscreen { width: 100vw; height: 100vh; background: #111412; }
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace, .layers-panel, .properties-panel { transition: none; }
+}
