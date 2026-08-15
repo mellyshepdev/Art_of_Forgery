@@ -591,6 +591,19 @@ function App() {
       }));
     }
   };
+  /* Selecting a slot from the tablet. Its own message rather than a synthetic
+     tap on a panel, so it keeps working in full screen when the panels are
+     slid off screen entirely - which is exactly when the rail is needed. */
+  const padSelectSlot = (id: number) => {
+    const slot = slots.find((s) => s.id === id);
+    if (!slot) return;
+    setSelectedSlot(id);
+    if (tool !== "edit-slots") setTool("edit-slots");   // selecting implies editing
+    flash(`${slot.id}. ${slot.name}`);
+  };
+  const padSelectRef = useRef(padSelectSlot);
+  padSelectRef.current = padSelectSlot;
+
   const applyPadGestureRef = useRef(applyPadGesture);
   applyPadGestureRef.current = applyPadGesture;
 
@@ -615,6 +628,7 @@ function App() {
         const msg = JSON.parse(e.data);
         if (msg.t === "ptr") applyPadRef.current(msg);
         else if (msg.t === "gesture") applyPadGestureRef.current(msg);
+        else if (msg.t === "slot" && typeof msg.id === "number") padSelectRef.current(msg.id);
       } catch { /* a malformed frame must not kill the socket */ }
     };
   };
