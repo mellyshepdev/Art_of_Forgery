@@ -437,6 +437,9 @@ function App() {
   const [padDown, setPadDown] = useState(false);
   const padLastFree = useRef<[number, number]>([0.5, 0.5]);
   const [padState, setPadState] = useState<"off" | "connecting" | "live">("off");
+  /** Pads the relay reports in this room - "live" on our socket says nothing
+      about whether a tablet is actually on the other end. */
+  const [padCount, setPadCount] = useState(0);
   const padSocket = useRef<WebSocket | null>(null);
 
 
@@ -625,13 +628,14 @@ function App() {
       padSocket.current.close();
       padSocket.current = null;
       setPadState("off");
+      setPadCount(0);
       return;
     }
     setPadState("connecting");
     const ws = new WebSocket(`wss://${window.location.host}/view/default`);
     padSocket.current = ws;
     ws.onopen = () => { setPadState("live"); flash("Tablet pad connected"); };
-    ws.onclose = () => { setPadState("off"); padSocket.current = null; };
+    ws.onclose = () => { setPadState("off"); setPadCount(0); padSocket.current = null; };
     ws.onerror = () => { setPadState("off"); flash("Pad connection failed"); };
     ws.onmessage = (e) => {
       try {
@@ -639,6 +643,7 @@ function App() {
         if (msg.t === "ptr") applyPadRef.current(msg);
         else if (msg.t === "gesture") applyPadGestureRef.current(msg);
         else if (msg.t === "slot" && typeof msg.id === "number") padSelectRef.current(msg.id);
+        else if ((msg.t === "presence" || msg.t === "hello") && typeof msg.pads === "number") setPadCount(msg.pads);
       } catch { /* a malformed frame must not kill the socket */ }
     };
   };
@@ -1066,7 +1071,7 @@ function App() {
         {/* The tablet's cursor. pointer-events:none is essential - if it could
             be hit, elementFromPoint would return the cursor itself and every
             event would land on it instead of the control underneath. */}
-        {padState === "live" && (
+        {padState === "live" && padCount > 0 && (
           <div
             className={`pad-cursor ${padDown ? "is-down" : ""}`}
             style={{ left: padCursor.x, top: padCursor.y }}
@@ -1157,8 +1162,12 @@ function App() {
               <ToolButton label="Show numbered edit points" active={showMarkers} onClick={() => setShowMarkers((value) => !value)}><ZoomIn size={16} /></ToolButton>
               <ToolButton label={zoomLocked ? "Exit zoom" : "Fit to canvas"} onClick={exitZoom}><Maximize2 size={16} /></ToolButton>
               <ToolButton
-                label={padState === "live" ? "Tablet pad: connected" : padState === "connecting" ? "Tablet pad: connecting…" : "Connect tablet pad"}
-                active={padState === "live"}
+                label={
+                  padState !== "live" ? "Connect tablet pad"
+                    : padCount > 0 ? `Tablet pad: ${padCount} connected`
+                    : "Waiting for tablet — relay reached, no pad yet"
+                }
+                active={padState === "live" && padCount > 0}
                 onClick={togglePad}
               ><Tablet size={16} /></ToolButton>
               <ToolButton
