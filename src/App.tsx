@@ -479,7 +479,11 @@ function App() {
   };
 
   const applyPadSample = (msg: { phase?: string; x?: number; y?: number }) => {
-    if (selectedSlot === null) return;
+    if (selectedSlot === null) {
+      // Silence here reads as "the pad is broken". Say what is actually wrong.
+      if (msg.phase === "down") flash("Pad connected - select a slot in Edit Slots first");
+      return;
+    }
     const slot = slots.find((s) => s.id === selectedSlot);
     if (!slot || typeof msg.x !== "number" || typeof msg.y !== "number") return;
     const local = padPointToSlot(slot, msg.x, msg.y);
@@ -521,6 +525,13 @@ function App() {
     if (msg.phase === "up") padDragRef.current = null;
   };
 
+  /* The socket's onmessage is assigned once, at connect time, so it captures
+     that render's state forever - selecting a slot afterwards never reached it
+     and every sample was dropped. This ref is repointed at the newest handler
+     each render, and the socket calls through it. */
+  const applyPadRef = useRef(applyPadSample);
+  applyPadRef.current = applyPadSample;
+
   const togglePad = () => {
     if (padSocket.current) {
       padSocket.current.close();
@@ -537,7 +548,7 @@ function App() {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        if (msg.t === "ptr") applyPadSample(msg);
+        if (msg.t === "ptr") applyPadRef.current(msg);
       } catch { /* a malformed frame must not kill the socket */ }
     };
   };
