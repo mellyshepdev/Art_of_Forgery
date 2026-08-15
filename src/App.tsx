@@ -38,7 +38,18 @@ const ZOOM_MAX = 700;
 /** How far a point travels per unit of finger travel. Below 1 so a full sweep
  *  of the pad is a fraction of the card - the point of the tablet is fine
  *  control, not covering ground quickly. */
-const PAD_SENSITIVITY = 0.35;
+const PAD_SENSITIVITY = 0.9;
+/** Kept out of the range real pointers use. */
+const PAD_POINTER_ID = 4242;
+
+/** Pointer capture only works for a pointer the browser is actually tracking.
+ *  Events synthesised for the tablet cursor are not, so the call throws
+ *  NotFoundError and aborts the handler mid-drag. Capture is an optimisation
+ *  here - it keeps a real drag alive outside the element - so losing it on a
+ *  synthetic pointer costs nothing, while letting it throw costs the drag. */
+const safeCapture = (el: Element, pointerId: number) => {
+  try { (el as HTMLElement).setPointerCapture(pointerId); } catch { /* synthetic pointer */ }
+};
 /** Bigger jumps the further in you are - 5% steps from 78 to 500 is 85 clicks. */
 const zoomStep = (z: number) => (z < 100 ? 5 : z < 200 ? 10 : 25);
 
@@ -418,7 +429,10 @@ function App() {
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
   const cornerDragRef = useRef<{ id: number; slotId: number; corner: CornerIndex; startX: number; startY: number; startRadius: number } | null>(null);
   const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
-  const padDragRef = useRef<{ slotId: number; index: number; startPad: SlotPoint; startPoint: SlotPoint } | null>(null);
+  const [padCursor, setPadCursor] = useState({ x: 400, y: 300 });
+  const padCursorRef = useRef({ x: 400, y: 300 });
+  const padPress = useRef<{ lastPad: [number, number]; moved: boolean } | null>(null);
+  const padLastFree = useRef<[number, number]>([0.5, 0.5]);
   const [padState, setPadState] = useState<"off" | "connecting" | "live">("off");
   const padSocket = useRef<WebSocket | null>(null);
 
@@ -482,65 +496,65 @@ function App() {
     return [(cardX - slot.x) / slot.w, (cardY - slot.y) / slot.h];
   };
 
+  /* The tablet drives a second cursor drawn inside the page, rather than the
+     OS pointer. A web page cannot move the system cursor, and on ChromeOS
+     nothing else can either - Crostini is a VM with no path back to the host
+     input stack. Drawing our own sidesteps all of it, and because the events
+     are dispatched at whatever sits under the cursor, the tablet can work every
+     control in forge rather than only outline points. */
   const applyPadSample = (msg: { phase?: string; x?: number; y?: number }) => {
-    if (selectedSlot === null) {
-      if (msg.phase === "down") flash("Pad connected - select a slot in Edit Slots first");
-      return;
-    }
-    const slot = slots.find((s) => s.id === selectedSlot);
-    if (!slot || typeof msg.x !== "number" || typeof msg.y !== "number") return;
+    if (typeof msg.x !== "number" || typeof msg.y !== "number") return;
+    const vw = window.innerWidth, vh = window.innerHeight;
 
     if (msg.phase === "down") {
-      const pts = slot.points?.length ? slot.points : samplePoints(slot);
-      // Grab the nearest point outright - never insert. Absolute positioning
-      // plus insert-on-miss meant every touch either teleported a point or
-      // scattered a new one into the outline. Adding points stays a deliberate
-      // act you do on the card, not a side effect of putting a finger down.
-      let nearest = 0, best = Infinity;
-      pts.forEach((pt, i) => {
-        const d = Math.hypot((pt[0] - 0.5) * slot.w, (pt[1] - 0.5) * slot.h);
-        void d;
-      });
-      // Nearest to where the finger landed, measured in card space so a wide
-      // slot does not bias the choice toward its short axis.
-      const padCard: SlotPoint = [msg.x, msg.y];
-      pts.forEach((pt, i) => {
-        const cx = slot.x + pt[0] * slot.w;
-        const cy = slot.y + pt[1] * slot.h;
-        const d = Math.hypot(cx - padCard[0], cy - padCard[1]);
-        if (d < best) { best = d; nearest = i; }
-      });
-      setSlots(slots.map((sl) => sl.id === slot.id ? { ...sl, points: pts } : sl));
-      padDragRef.current = {
-        slotId: slot.id,
-        index: nearest,
-        startPad: padCard,
-        startPoint: pts[nearest],
+      padPress.current = { lastPad: [msg.x, msg.y], moved: false };
+      const at = padCursorRef.current;
+      dispatchPad("pointerdown", at.x, at.y, true);
+      return;
+    }
+
+    if (msg.phase === "move") {
+      const press = padPress.current;
+      // Relative movement: a full sweep of the pad crosses a fraction of the
+      // screen, which is the whole point of using a tablet for fine work.
+      const from = press ? press.lastPad : padLastFree.current;
+      const dx = (msg.x - from[0]) * vw * PAD_SENSITIVITY;
+      const dy = (msg.y - from[1]) * vh * PAD_SENSITIVITY;
+      const next = {
+        x: Math.max(0, Math.min(vw - 1, padCursorRef.current.x + dx)),
+        y: Math.max(0, Math.min(vh - 1, padCursorRef.current.y + dy)),
       };
+      padCursorRef.current = next;
+      setPadCursor(next);
+      if (press) { press.lastPad = [msg.x, msg.y]; press.moved = true; }
+      else padLastFree.current = [msg.x, msg.y];
+      dispatchPad("pointermove", next.x, next.y, Boolean(press));
       return;
     }
 
-    if (msg.phase === "move" && padDragRef.current) {
-      const d = padDragRef.current;
-      // Relative, not absolute: the point moves by how far the finger moved,
-      // scaled down, so nothing jumps and small nudges are actually possible.
-      const dxCard = (msg.x - d.startPad[0]) * PAD_SENSITIVITY;
-      const dyCard = (msg.y - d.startPad[1]) * PAD_SENSITIVITY;
-      setSlots(slots.map((sl) => {
-        if (sl.id !== d.slotId || !sl.points) return sl;
-        return {
-          ...sl,
-          points: sl.points.map((pt, i) =>
-            i === d.index
-              ? [d.startPoint[0] + dxCard / (sl.w || 1), d.startPoint[1] + dyCard / (sl.h || 1)] as SlotPoint
-              : pt,
-          ),
-        };
-      }));
-      return;
+    if (msg.phase === "up") {
+      const at = padCursorRef.current;
+      const press = padPress.current;
+      dispatchPad("pointerup", at.x, at.y, false);
+      // A press that never moved is a click - that is how you work a button.
+      if (press && !press.moved) dispatchPad("click", at.x, at.y, false);
+      padPress.current = null;
+      padLastFree.current = [msg.x, msg.y];
     }
+  };
 
-    if (msg.phase === "up") padDragRef.current = null;
+  /** Fire a real DOM event at whatever the pad cursor is over. */
+  const dispatchPad = (type: string, x: number, y: number, pressed: boolean) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return;
+    const init: PointerEventInit & { button: number; buttons: number } = {
+      bubbles: true, cancelable: true, composed: true,
+      clientX: x, clientY: y,
+      pointerId: PAD_POINTER_ID, pointerType: "pen", isPrimary: true,
+      button: 0, buttons: pressed || type === "pointerdown" ? 1 : 0,
+      pressure: pressed || type === "pointerdown" ? 0.5 : 0,
+    };
+    el.dispatchEvent(type === "click" ? new MouseEvent("click", init) : new PointerEvent(type, init));
   };
 
   /* The socket's onmessage is assigned once, at connect time, so it captures
@@ -740,7 +754,7 @@ function App() {
     livePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (livePointers.current.size >= 2) { beginPinchIfReady(); return; }
     if (!canPan || event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    safeCapture(event.currentTarget, event.pointerId);
     dragRef.current = {
       id: event.pointerId,
       startX: event.clientX,
@@ -991,6 +1005,17 @@ function App() {
 
   return (
     <div className="app-shell">
+        {/* The tablet's cursor. pointer-events:none is essential - if it could
+            be hit, elementFromPoint would return the cursor itself and every
+            event would land on it instead of the control underneath. */}
+        {padState === "live" && (
+          <div
+            className={`pad-cursor ${padPress.current ? "is-down" : ""}`}
+            style={{ left: padCursor.x, top: padCursor.y }}
+            aria-hidden="true"
+            data-export-hide="true"
+          />
+        )}
       <header className="topbar">
         <div className="brand-block">
           <div className="brand-mark"><Sparkles size={17} strokeWidth={1.6} /></div>
@@ -1175,7 +1200,7 @@ function App() {
                       onPointerDown={(event) => {
                         if (tool === "edit-slots" && event.button === 0) {
                           event.stopPropagation();
-                          event.currentTarget.setPointerCapture(event.pointerId);
+                          safeCapture(event.currentTarget, event.pointerId);
                           slotDragRef.current = {
                             id: event.pointerId,
                             slotId: slot.id,
@@ -1220,7 +1245,7 @@ function App() {
                           title={`${label} - drag out to square off, in to round`}
                           onPointerDown={(event) => {
                             event.stopPropagation();
-                            event.currentTarget.setPointerCapture(event.pointerId);
+                            safeCapture(event.currentTarget, event.pointerId);
                             cornerDragRef.current = {
                               id: event.pointerId,
                               slotId: slot.id,
@@ -1269,7 +1294,7 @@ function App() {
                         const p = pointFromCursor(slot, event.clientX, event.clientY);
                         if (!p) return;
                         event.stopPropagation();
-                        event.currentTarget.setPointerCapture(event.pointerId);
+                        safeCapture(event.currentTarget, event.pointerId);
                         const card = cardRef.current?.getBoundingClientRect();
                         const aspect = card ? (slot.w * card.width) / (slot.h * card.height) : 1;
                         const seg = nearestSegment(pts, p, aspect);
@@ -1304,7 +1329,7 @@ function App() {
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             setCoarsePointer(event.pointerType === "touch");
-                            event.currentTarget.setPointerCapture(event.pointerId);
+                            safeCapture(event.currentTarget, event.pointerId);
                             if (!slot.points?.length) {
                               // Materialise on first grab, so the shape doesn't
                               // shift under the cursor as it converts.
