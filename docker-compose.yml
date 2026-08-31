@@ -5,4 +5,17 @@ services:
       dockerfile: Dockerfile
     container_name: forge
     restart: unless-stopped
-    network_mode: host
+    # Routing lives in Traefik's file provider (dynamic-config/forge.yml), which
+    # serves forge.prime-quality.online -> http://forge:80. traefik.enable=false
+    # keeps the docker provider from adding a second, unintended route.
+    # (Was network_mode: host in the initial commit - wrong on unit8, where
+    #  host :80 is Traefik itself; nginx could not bind. Matches the locator
+    #  registry copy at locator/registry_data/compose/forge.yml.)
+    labels:
+      - "traefik.enable=false"
+    networks:
+      - traefik_proxy
+
+networks:
+  traefik_proxy:
+    external: true

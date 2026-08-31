@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { toJpeg, toPng } from "html-to-image";
 import { cardTemplates, templateSrc } from "./data/cardTemplates";
-import { cardSlots, slotStyle } from "./data/cardSlots";
+import { cardSlots, slotById, slotStyle } from "./data/cardSlots";
 import { DEFAULT_BRUSH, type BrushState } from "./paint/brushes";
 import { BrushPanel } from "./paint/BrushPanel";
 import { PaintCanvas, type PaintCanvasHandle } from "./paint/PaintCanvas";
@@ -228,7 +228,7 @@ function App() {
     setZoom(350);
     setZoomLocked(true);
     setPan({ x: 0, y: 0 });
-    flash(`${slot.id}. ${slot.name} - drag to move around`);
+    flash(`${slot.id}. ${slot.name} - locked to the grid`);
   };
 
   const exitZoom = () => {
@@ -514,7 +514,7 @@ function App() {
                 <img className="template-plate" src={templateSrc(template)} alt={`${template.name} card frame`} />
 
                 {artUrl && (
-                  <div className="slot-art" style={slotStyle(cardSlots[4])}>
+                  <div className="slot-art" style={slotStyle(slotById(5))}>
                     <img src={artUrl} alt="Card artwork" style={{ transform: `translate(${artX - 50}%, ${artY - 50}%) scale(${artScale / 100})` }} />
                   </div>
                 )}
@@ -541,7 +541,7 @@ function App() {
                 })}
 
                 {cardSubtitle && (
-                  <div className="slot-subtitle" style={slotStyle(cardSlots[1])}>{cardSubtitle}</div>
+                  <div className="slot-subtitle" style={slotStyle(slotById(2))}>{cardSubtitle}</div>
                 )}
 
                 <PaintCanvas
