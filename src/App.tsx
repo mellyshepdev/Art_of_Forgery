@@ -2,7 +2,12 @@ import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type P
 import { toJpeg, toPng } from "html-to-image";
 import { cardTemplates, templateSrc } from "./data/cardTemplates";
 import { cardSlots, slotStyle } from "./data/cardSlots";
+import { DEFAULT_BRUSH, type BrushState } from "./paint/brushes";
+import { BrushPanel } from "./paint/BrushPanel";
+import { PaintCanvas, type PaintCanvasHandle } from "./paint/PaintCanvas";
+import "./paint/paint.css";
 import {
+  Brush,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -10,8 +15,10 @@ import {
   CircleHelp,
   Cloud,
   Download,
+  Eraser,
   Eye,
   EyeOff,
+  FilePlus2,
   Frame,
   Hand,
   ImagePlus,
@@ -23,6 +30,7 @@ import {
   Redo2,
   RotateCcw,
   Sparkles,
+  Trash2,
   Undo2,
   Upload,
   X,
@@ -158,6 +166,15 @@ function App() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ id: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
 
+  const paintRef = useRef<PaintCanvasHandle>(null);
+  const lastBrushTypeRef = useRef<BrushState["type"]>("brush");
+  const [panelMode, setPanelMode] = useState<"layers" | "paint">("layers");
+  const [brush, setBrush] = useState<BrushState>(DEFAULT_BRUSH);
+  const [eyedropper, setEyedropper] = useState(false);
+  const [paintHistory, setPaintHistory] = useState({ canUndo: false, canRedo: false });
+  const [bgBusy, setBgBusy] = useState(false);
+  const paintMode = panelMode === "paint";
+
   const selected = useMemo(() => layers.find((layer) => layer.id === selectedLayer) ?? layers[0], [selectedLayer]);
   const theme = themes[themeKey];
   const template = cardTemplates[templateIndex];
@@ -173,6 +190,33 @@ function App() {
   const flash = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 2200);
+  };
+
+  const newBlankCanvas = () => {
+    setPanelMode("paint");
+    setEyedropper(false);
+    window.requestAnimationFrame(() => paintRef.current?.clearWhite());
+  };
+
+  const handleUndo = () => {
+    if (paintMode) paintRef.current?.undo();
+    else flash("Nothing to undo yet");
+  };
+
+  const handleRedo = () => {
+    if (paintMode) paintRef.current?.redo();
+    else flash("Nothing to redo yet");
+  };
+
+  const toggleEraser = () => {
+    setEyedropper(false);
+    setBrush((current) => {
+      if (current.type === "eraser") {
+        return { ...current, type: lastBrushTypeRef.current };
+      }
+      lastBrushTypeRef.current = current.type;
+      return { ...current, type: "eraser" };
+    });
   };
 
   /** Click a slot: select it, zoom to 350% centred on it, and lock the zoom
@@ -196,7 +240,7 @@ function App() {
 
   /* Grab-to-pan. PointerEvents means mouse, pen and touch all take the same
      path, and capture keeps the drag alive if the cursor leaves the stage. */
-  const canPan = zoomLocked || tool === "hand";
+  const canPan = (zoomLocked || tool === "hand") && !paintMode;
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!canPan || event.button !== 0) return;
@@ -343,8 +387,9 @@ function App() {
           <span>{cardName || "Untitled card"}</span><small>{template.name}</small>
         </div>
         <div className="top-actions">
-          <ToolButton label="Undo"><Undo2 size={17} /></ToolButton>
-          <ToolButton label="Redo"><Redo2 size={17} /></ToolButton>
+          <ToolButton label="Undo" active={paintMode && paintHistory.canUndo} onClick={handleUndo}><Undo2 size={17} /></ToolButton>
+          <ToolButton label="Redo" active={paintMode && paintHistory.canRedo} onClick={handleRedo}><Redo2 size={17} /></ToolButton>
+          <button className="ghost-top-button" onClick={newBlankCanvas} title="Start a blank white canvas"><FilePlus2 size={15} /> New canvas</button>
           <button className="save-button" onClick={() => flash("Draft saved to your workspace")}><Cloud size={15} /> Save</button>
           <div className="export-wrap">
             <button className="export-button" onClick={exportCard} disabled={isExporting}>
@@ -368,30 +413,68 @@ function App() {
       </header>
 
       <div className="workspace">
-        <aside className="layers-panel">
-          <div className="panel-heading"><span>LAYERS</span><button aria-label="Layer options"><Layers3 size={15} /></button></div>
-          <div className="layer-stack">
-            {layers.map((layer) => (
-              <button key={layer.id} className={`layer-row ${selectedLayer === layer.id ? "is-active" : ""}`} onClick={() => selectLayer(layer.id)}>
-                <span className="layer-number">{layer.number}</span>
-                <span className="layer-copy"><strong>{layer.label}</strong><small>{layer.helper}</small></span>
-                <span
-                  className="visibility-toggle"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${visibility[layer.id] ? "Hide" : "Show"} ${layer.label}`}
-                  onClick={(event) => { event.stopPropagation(); toggleVisibility(layer.id); }}
-                  onKeyDown={(event) => { if (event.key === "Enter") toggleVisibility(layer.id); }}
-                >
-                  {visibility[layer.id] ? <Eye size={14} /> : <EyeOff size={14} />}
-                </span>
+        <aside className={`layers-panel ${paintMode ? "is-paint" : ""}`}>
+          <div className="panel-heading">
+            <span>{paintMode ? "BRUSHES" : "LAYERS"}</span>
+            <div className="panel-mode-toggle" role="group" aria-label="Left panel mode">
+              <button
+                type="button"
+                className={!paintMode ? "is-active" : ""}
+                aria-pressed={!paintMode}
+                title="Card layers"
+                onClick={() => setPanelMode("layers")}
+              >
+                <Layers3 size={13} />
               </button>
-            ))}
+              <button
+                type="button"
+                className={paintMode ? "is-active" : ""}
+                aria-pressed={paintMode}
+                title="Paint &amp; brushes"
+                onClick={() => setPanelMode("paint")}
+              >
+                <Brush size={13} />
+              </button>
+            </div>
           </div>
-          <div className="layers-footer">
-            <button onClick={() => flash("Blank graphic layer added")}><Plus size={15} /> Add layer</button>
-            <button aria-label="Help"><CircleHelp size={16} /></button>
-          </div>
+          {paintMode ? (
+            <BrushPanel
+              brush={brush}
+              onChange={(patch) => setBrush((current) => ({ ...current, ...patch }))}
+              eyedropper={eyedropper}
+              onToggleEyedropper={() => setEyedropper((value) => !value)}
+              onWhiteCanvas={() => paintRef.current?.clearWhite()}
+              onClearCanvas={() => paintRef.current?.clearTransparent()}
+              onRemoveBackground={() => paintRef.current?.removeBackground()}
+              onLoadImage={(file) => paintRef.current?.loadImageFile(file)}
+              bgBusy={bgBusy}
+            />
+          ) : (
+            <>
+              <div className="layer-stack">
+                {layers.map((layer) => (
+                  <button key={layer.id} className={`layer-row ${selectedLayer === layer.id ? "is-active" : ""}`} onClick={() => selectLayer(layer.id)}>
+                    <span className="layer-number">{layer.number}</span>
+                    <span className="layer-copy"><strong>{layer.label}</strong><small>{layer.helper}</small></span>
+                    <span
+                      className="visibility-toggle"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${visibility[layer.id] ? "Hide" : "Show"} ${layer.label}`}
+                      onClick={(event) => { event.stopPropagation(); toggleVisibility(layer.id); }}
+                      onKeyDown={(event) => { if (event.key === "Enter") toggleVisibility(layer.id); }}
+                    >
+                      {visibility[layer.id] ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="layers-footer">
+                <button onClick={() => flash("Blank graphic layer added")}><Plus size={15} /> Add layer</button>
+                <button aria-label="Help"><CircleHelp size={16} /></button>
+              </div>
+            </>
+          )}
         </aside>
 
         <main className="canvas-area">
@@ -460,8 +543,42 @@ function App() {
                 {cardSubtitle && (
                   <div className="slot-subtitle" style={slotStyle(cardSlots[1])}>{cardSubtitle}</div>
                 )}
+
+                <PaintCanvas
+                  ref={paintRef}
+                  active={paintMode}
+                  brush={brush}
+                  eyedropper={eyedropper}
+                  onPickColor={(hex) => {
+                    setBrush((current) => ({ ...current, color: hex }));
+                    setEyedropper(false);
+                    flash(`Picked ${hex.toUpperCase()}`);
+                  }}
+                  onHistoryChange={(canUndo, canRedo) => setPaintHistory({ canUndo, canRedo })}
+                  onBusyChange={setBgBusy}
+                  onNotify={flash}
+                />
               </div>
             </div>
+
+            {paintMode && (
+              <div className="paint-quickbar">
+                <button type="button" onClick={handleUndo} disabled={!paintHistory.canUndo} title="Undo" aria-label="Undo"><Undo2 size={16} /></button>
+                <button type="button" onClick={handleRedo} disabled={!paintHistory.canRedo} title="Redo" aria-label="Redo"><Redo2 size={16} /></button>
+                <span className="paint-quickbar-sep" />
+                <button
+                  type="button"
+                  className={brush.type === "eraser" ? "is-active" : ""}
+                  aria-pressed={brush.type === "eraser"}
+                  onClick={toggleEraser}
+                  title="Eraser"
+                  aria-label="Eraser"
+                >
+                  <Eraser size={16} />
+                </button>
+                <button type="button" onClick={() => paintRef.current?.clearTransparent()} title="Erase everything" aria-label="Erase everything"><Trash2 size={16} /></button>
+              </div>
+            )}
             <div className="canvas-caption"><span>{cardName}</span><small>744 x 1056 px</small></div>
           </div>
         </main>
