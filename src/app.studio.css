@@ -88,3 +88,56 @@
 .texture-colors { display: flex; gap: 8px; margin: 8px 0; }
 .ghost-button { padding: 7px 10px; border: 1px solid #373e39; border-radius: 3px; color: #858d87; background: #1c201d; font-size: 9px; cursor: pointer; }
 .ghost-button.is-active { color: #101312; background: #b0c666; border-color: #b0c666; }
+ /*Append these classes to the bottom of the file. When .mode art is applied, it will hide the slot panels, collapse the sidebar column, and expand the canvas to fill the workspace.*/
+.mode-art .studio-workspace {
+  grid-template-columns: 1fr;
+}
+
+.mode-art .studio-card {
+  display: none;
+}
+
+.new-page-btn{
+  
+}
+.new-page-cntrl-option{
+  
+}
+
+/*advanced colored*/
+
+.multi-colored-hue{
+  
+}
+.saturation-lighgtness{
+  
+}
+.greyscale-graient {
+  
+}
+.opacity-slier{
+  
+}
+.brightness-slider{
+  
+}
+
+.import{
+  
+}
+.3d-orbit{
+  
+}
+.environment-lighting{
+  
+}
+.dot-cursur{
+  
+}
+.brush{}
+.spray{}
+.pen{}
+.eyedropper-tool{}
+.left-panel-collapse{}
+.right-panel-collapse{}
+.top-panel-hide{}
