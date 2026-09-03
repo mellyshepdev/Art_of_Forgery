@@ -145,13 +145,27 @@ const loadFills = (): FillState => {
 };
 
 /** Emit the grid as the literal contents of cardSlots.ts, so a finished layout
- *  can be pasted back into source and stop depending on this browser. */
+ *  can be pasted back into source and stop depending on this browser.
+ *
+ *  POINTS ARE PART OF THE LAYOUT. They were omitted here until 2026-09-03,
+ *  which quietly broke the one promise this function makes: a point-edited
+ *  outline is the slowest work in the editor, it lives only in localStorage
+ *  under card-creator.slots.v1, and export was the only way to get it into
+ *  source. Dropping it meant the exported grid pasted back as plain boxes,
+ *  the red dashed outlines vanished, and the browser stayed the only copy -
+ *  a week of outlining was one cleared cache from gone and nobody was told.
+ *  The tell was subtle: everything else round-tripped perfectly. */
 const slotsToSource = (slots: CardSlot[]) => {
   const f = (n: number) => n.toFixed(5);
   const lines = slots.map((s) => {
     const radii = s.radii ? `, radii: [${s.radii.map((r) => Math.round(r)).join(", ")}]` : "";
+    // Same 5dp as every other coordinate, and the same [x, y] pair shape the
+    // CardSlot type declares, so the output is valid source either way.
+    const points = s.points?.length
+      ? `, points: [${s.points.map(([x, y]) => `[${f(x)}, ${f(y)}]`).join(", ")}]`
+      : "";
     return `  { id: ${s.id}, name: ${JSON.stringify(s.name)}, shape: ${JSON.stringify(s.shape)}, ` +
-      `kind: ${JSON.stringify(s.kind)}, x: ${f(s.x)}, y: ${f(s.y)}, w: ${f(s.w)}, h: ${f(s.h)}${radii} },`;
+      `kind: ${JSON.stringify(s.kind)}, x: ${f(s.x)}, y: ${f(s.y)}, w: ${f(s.w)}, h: ${f(s.h)}${radii}${points} },`;
   });
   return `export const cardSlots: CardSlot[] = [\n${lines.join("\n")}\n];\n`;
 };
