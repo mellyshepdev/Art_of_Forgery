@@ -31,7 +31,7 @@ export function AppNavigation({ mode, setMode }: { mode: AppMode; setMode: (m: A
           onClick={() => setMode(id)}
           aria-pressed={mode === id}
         >
-          <Icon size={14} strokeWidth={1.7} />
+          <Icon size={12} strokeWidth={1.8} />
           <span>{label}</span>
         </button>
       ))}
