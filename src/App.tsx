@@ -359,6 +359,9 @@ function App() {
     try { localStorage.setItem("card-creator.fstools.v1", JSON.stringify(fsTools)); } catch { /* ignore */ }
   }, [fsTools]);
 
+  /** Templates start expanded; the 16-thumbnail grid is the tallest block in
+   *  the panel, so it is the one worth folding away while working. */
+  const [templatesOpen, setTemplatesOpen] = useState(true);
   const [showOutline, setShowOutline] = useState(true);
   const [showPoints, setShowPoints] = useState(true);
   const outlineHidden = (id: number) => Boolean(hiddenOutlines[id]);
@@ -1505,12 +1508,15 @@ function App() {
                       preserveAspectRatio="none"
                       aria-hidden="true"
                     >
+                      {/* Red dashed stroke removed 2026-09-03 at the user's request.
+                          The polygon still paints its fill, so a point-edited slot
+                          keeps its true shape - this drops the marker line only.
+                          THE POINT DATA IS UNTOUCHED and still exports; restoring the
+                          line means putting stroke/strokeWidth/strokeDasharray back. */}
                       <polygon
                         points={slot.points!.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
                         fill={raw ? fillWithAlpha(raw, opacityOf(slot.id)) : "none"}
-                        stroke={(!showOutline || outlineHidden(slot.id)) ? "none" : "rgba(255, 60, 90, .78)"}
-                        strokeWidth="1.5"
-                        strokeDasharray="3 3"
+                        stroke="none"
                         vectorEffect="non-scaling-stroke"
                       />
                     </svg>
@@ -2001,7 +2007,16 @@ function App() {
             <section className="property-section">
               <div className="section-label">
                 <span>TEMPLATE</span>
-                <button aria-label="Reset template" onClick={() => setTemplateIndex(0)}><RotateCcw size={13} /></button>
+                <div className="section-actions">
+                  <button aria-label="Reset template" onClick={() => setTemplateIndex(0)}><RotateCcw size={13} /></button>
+                  <button
+                    aria-label={templatesOpen ? "Collapse templates" : "Expand templates"}
+                    aria-expanded={templatesOpen}
+                    onClick={() => setTemplatesOpen((v) => !v)}
+                  >
+                    {templatesOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  </button>
+                </div>
               </div>
               <div className="template-selector">
                 <button aria-label="Previous template" onClick={() => handleTemplateChange("prev")}><ChevronLeft size={16} /></button>
@@ -2011,7 +2026,7 @@ function App() {
                 </div>
                 <button aria-label="Next template" onClick={() => handleTemplateChange("next")}><ChevronRight size={16} /></button>
               </div>
-              <div className="template-grid">
+              {templatesOpen && <div className="template-grid">
                 {cardTemplates.map((item, index) => (
                   <button
                     key={item.id}
@@ -2023,7 +2038,7 @@ function App() {
                     <img src={templateSrc(item)} alt="" loading="lazy" />
                   </button>
                 ))}
-              </div>
+              </div>}
             </section>
             <section className="property-section">
               <div className="section-label"><span>COLOR SYSTEM</span><button aria-label="Color help"><CircleHelp size={13} /></button></div>
