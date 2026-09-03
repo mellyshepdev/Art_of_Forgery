@@ -1,67 +1,40 @@
-import React from "react";
 import { LayoutGrid, Image as ImageIcon, Box } from "lucide-react";
 
 export type AppMode = "card" | "canvas" | "3d";
 
-interface AppNavigationProps {
-  mode: AppMode;
-  setMode: (mode: AppMode) => void;
-}
+const TABS: { id: AppMode; label: string; icon: typeof LayoutGrid }[] = [
+  { id: "card",   label: "Card",   icon: LayoutGrid },
+  { id: "canvas", label: "Canvas", icon: ImageIcon },
+  { id: "3d",     label: "3D",     icon: Box },
+];
 
-export const AppNavigation: React.FC<AppNavigationProps> = ({ mode, setMode }) => {
+/** Mode switcher, drawn as part of the top bar rather than above it.
+ *
+ *  It used to render its own <header> with a "Art of Forgery Studio" title and
+ *  a Ready pill, which stacked straight on top of App's own .topbar - two
+ *  titles ("Art of Forgery Studio" over "FORGE/STUDIO") and two bottom borders.
+ *  It also styled itself in Tailwind zinc/emerald/indigo with font-mono, which
+ *  matches nothing else here: the studio is #151816 bars, #292e2b rules, a
+ *  #c8dc82 accent and Inter with tight tracking.
+ *
+ *  So: no title, no second border, and the app's own palette. Same background
+ *  as .topbar with no rule beneath, so this strip and the bar below it read as
+ *  one header with a single border at the bottom.
+ */
+export function AppNavigation({ mode, setMode }: { mode: AppMode; setMode: (m: AppMode) => void }) {
   return (
-    <header className="h-12 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-4 z-30 shrink-0">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 font-bold text-sm tracking-wide text-zinc-100">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-emerald-500 to-indigo-500 flex items-center justify-center text-white text-xs font-black shadow-md">
-            A
-          </div>
-          <span>Art of Forgery Studio</span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 shadow-inner">
+    <nav className="mode-nav">
+      {TABS.map(({ id, label, icon: Icon }) => (
         <button
-          onClick={() => setMode("card")}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            mode === "card"
-              ? "bg-emerald-600 text-white shadow-md"
-              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60"
-          }`}
+          key={id}
+          className={`mode-tab${mode === id ? " is-active" : ""}`}
+          onClick={() => setMode(id)}
+          aria-pressed={mode === id}
         >
-          <LayoutGrid size={15} />
-          <span>Card Studio</span>
+          <Icon size={14} strokeWidth={1.7} />
+          <span>{label}</span>
         </button>
-
-        <button
-          onClick={() => setMode("canvas")}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            mode === "canvas"
-              ? "bg-emerald-600 text-white shadow-md"
-              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60"
-          }`}
-        >
-          <ImageIcon size={15} />
-          <span>Free Canvas</span>
-        </button>
-
-        <button
-          onClick={() => setMode("3d")}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            mode === "3d"
-              ? "bg-indigo-600 text-white shadow-md"
-              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60"
-          }`}
-        >
-          <Box size={15} />
-          <span>3D Character Studio</span>
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
-        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-        <span>Ready</span>
-      </div>
-    </header>
+      ))}
+    </nav>
   );
-};
+}

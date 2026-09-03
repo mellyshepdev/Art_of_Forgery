@@ -29,6 +29,46 @@ button { color: inherit; }
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
 }
 
+/* Mode switcher. Shares .topbar's background and carries NO bottom border, so
+   the strip and the bar beneath it read as a single header - the previous
+   version was a second full-height bar with its own rule and its own title
+   ("Art of Forgery Studio" sitting on top of "FORGE/STUDIO"). */
+.mode-nav {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 38px;
+  padding: 0 14px;
+  background: #151816;
+}
+
+.mode-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #79817c;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+
+.mode-tab:hover { color: #c9cfc9; background: #1b201d; }
+
+.mode-tab.is-active {
+  color: #c8dc82;
+  border-color: #55603c;
+  background: linear-gradient(145deg, #27301d, #171b15);
+}
+
 .brand-block {
   display: flex;
   align-items: center;
