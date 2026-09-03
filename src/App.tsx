@@ -769,6 +769,40 @@ function App() {
     flash("Slots reset to their built-in positions");
   };
 
+  /** Export the full slot state - including `points`, which the cardSlots.ts
+   *  export could not carry until 68db5ab and which is the slowest work in the
+   *  editor.
+   *
+   *  This used to only console.log(). The toast said so, but a button labelled
+   *  "Export JSON" that quietly writes to devtools and nowhere else reads as a
+   *  no-op: the work never left the page, and the outlines stayed one cleared
+   *  cache from gone while looking exported. It now does both things a person
+   *  means by export - a file on disk, and the text on the clipboard. */
+  const exportSlotsJson = async () => {
+    const json = JSON.stringify(slots, null, 2);
+    const outlined = slots.filter((s) => s.points?.length).length;
+
+    try {
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `card-slots-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoked on the next tick, not immediately: Safari cancels an in-flight
+      // download if the object URL disappears out from under it.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { /* download blocked - the clipboard copy below still gets it out */ }
+
+    try {
+      await navigator.clipboard.writeText(json);
+      flash(`${slots.length} slots (${outlined} outlined) downloaded and copied`);
+    } catch {
+      window.prompt("Copy the slot JSON below:", json);
+    }
+  };
+
   const copySlotSource = async () => {
     const source = slotsToSource(slots);
     try {
@@ -1374,7 +1408,7 @@ function App() {
               </button>
             </div>
             {!paintMode && (
-              <button onClick={() => { console.log(JSON.stringify(slots, null, 2)); flash("Slots JSON logged to console!"); }}>Export JSON</button>
+              <button onClick={exportSlotsJson}>Export JSON</button>
             )}
           </div>
           {paintMode ? (
