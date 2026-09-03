@@ -2,6 +2,7 @@ import "./app.studio.css";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { toJpeg, toPng } from "html-to-image";
 import { cardTemplates, templateSrc } from "./data/cardTemplates";
+import { AccountMenu } from "./components/AccountMenu";
 import { cardSlots as initialCardSlots, radiiOf, samplePoints, slotById, slotStyle, type CardSlot, type SlotPoint, type SlotRadii } from "./data/cardSlots";
 import { ColorWheel } from "./cardstudio/colorwheel";
 import { DEFAULT_BRUSH, type BrushState } from "./paint/brushes";
@@ -1344,7 +1345,7 @@ function App() {
               </div>
             )}
           </div>
-          <button className="avatar" aria-label="Account">AS</button>
+          <AccountMenu />
         </div>
       </header>
 
