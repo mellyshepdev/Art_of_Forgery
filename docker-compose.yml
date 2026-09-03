@@ -6,10 +6,14 @@ services:
     container_name: forge
     restart: unless-stopped
     # Routing lives in Traefik's file provider (dynamic-config/forge.yml), which
-    # serves forge.prime-quality.online only. These labels used to publish
-    # forge.theofficialblacksheepco.online as a second way in - retired
-    # 2026-08-14. Leaving traefik.enable=false so the docker provider cannot
-    # quietly re-add a route that bypasses the intended single entrypoint.
+    # serves forge.prime-quality.online -> http://forge:80, and only that. These
+    # labels used to publish forge.theofficialblacksheepco.online as a second way
+    # in - retired 2026-08-14. traefik.enable=false stays so the docker provider
+    # cannot quietly re-add a route that bypasses the single intended entrypoint.
+    #
+    # Not network_mode: host, which the initial commit used - wrong on unit8,
+    # where host :80 is Traefik itself and the server could not bind. Mirrors the
+    # locator registry copy at locator/registry_data/compose/forge.yml.
     labels:
       - "traefik.enable=false"
     networks:
@@ -18,4 +22,3 @@ services:
 networks:
   traefik_proxy:
     external: true
-

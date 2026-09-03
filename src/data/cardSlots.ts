@@ -10,7 +10,7 @@ export type SlotKind = "text" | "fill" | "image";
 export type SlotRadii = [number, number, number, number];
 
 export type CardSlot = {
-  /** 1-19, the number shown on the guide overlay */
+  /** 1-20, the number shown on the guide overlay */
   id: number;
   name: string;
   shape: SlotShape;

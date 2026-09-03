@@ -1,0 +1,254 @@
+/* Paint mode: brush palette on the left, drawing surface over the card. */
+
+.panel-mode-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #303632;
+  border-radius: 5px;
+  background: #121513;
+}
+.panel-mode-toggle button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border: 0;
+  border-radius: 3px;
+  color: #7b837d;
+  background: transparent;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+.panel-mode-toggle button:hover { color: #c3c8c4; }
+.panel-mode-toggle button.is-active { color: #141712; background: #b7cd69; }
+
+.layers-panel.is-paint { grid-template-rows: 47px 1fr; }
+
+.brush-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 14px 20px;
+  overflow: auto;
+}
+
+.brush-tools {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.brush-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid #2c322e;
+  border-radius: 4px;
+  color: #aeb5af;
+  background: #141715;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+.brush-tool:hover { border-color: #3c4539; background: #1b1f1c; }
+.brush-tool.is-active {
+  border-color: #6f8039;
+  color: #e6ebe1;
+  background: linear-gradient(90deg, rgba(183, 205, 105, 0.16), rgba(183, 205, 105, 0.03));
+}
+.brush-tool.is-active svg { color: #c3d97a; }
+
+.brush-field { display: grid; gap: 8px; }
+.brush-field .section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #777f7a;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+}
+.brush-field .section-label output {
+  color: #b6cb6d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.brush-sizes { display: flex; gap: 6px; }
+.brush-size-chip {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #2c322e;
+  border-radius: 4px;
+  background: #141715;
+  cursor: pointer;
+}
+.brush-size-chip i {
+  display: block;
+  border-radius: 50%;
+  background: #8c948d;
+}
+.brush-size-chip:hover { border-color: #3c4539; }
+.brush-size-chip.is-active { border-color: #b7cd69; }
+.brush-size-chip.is-active i { background: #c3d97a; }
+
+.brush-color-row { display: flex; align-items: center; gap: 8px; }
+.brush-swatch {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #3a413b;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.brush-swatch input {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.brush-hex {
+  flex: 1;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #363d38;
+  border-radius: 4px;
+  color: #d2d8d3;
+  background: #121513;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.brush-eyedrop {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #2c322e;
+  border-radius: 4px;
+  color: #8d958f;
+  background: #141715;
+  cursor: pointer;
+}
+.brush-eyedrop:hover { border-color: #3c4539; color: #c3c8c4; }
+.brush-eyedrop.is-active { border-color: #b7cd69; color: #141712; background: #b7cd69; }
+
+.brush-actions { display: grid; gap: 6px; }
+.brush-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid #2c322e;
+  border-radius: 4px;
+  color: #b7beb8;
+  background: #141715;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.brush-action:hover { border-color: #3c4539; background: #1b1f1c; }
+.brush-action.primary {
+  border-color: #6f8039;
+  color: #141712;
+  background: #b7cd69;
+}
+.brush-action.primary:hover { background: #c3d97a; }
+.brush-action:disabled { cursor: wait; opacity: 0.65; }
+.brush-action.as-label { position: relative; overflow: hidden; }
+.brush-action.as-label input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.brush-hint {
+  margin: 0;
+  color: #6b736d;
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.spin { animation: brush-spin 900ms linear infinite; }
+@keyframes brush-spin { to { transform: rotate(360deg); } }
+
+.ghost-top-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #363d38;
+  border-radius: 4px;
+  color: #c6ccc6;
+  background: #191d1a;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.ghost-top-button:hover { border-color: #56603f; background: #1f241b; }
+
+/* Drawing surface, stretched over the card box so zoom/pan carry it along. */
+.paint-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* Floating quick controls on the drawing tablet (paint mode only). */
+.paint-quickbar {
+  position: absolute;
+  z-index: 8;
+  top: 14px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid #363d38;
+  border-radius: 8px;
+  background: rgba(20, 23, 21, 0.92);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  transform: translateX(-50%);
+}
+.paint-quickbar button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #b7beb8;
+  background: transparent;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+.paint-quickbar button:hover:not(:disabled) { color: #e6ebe1; background: #22271f; }
+.paint-quickbar button.is-active {
+  color: #141712;
+  background: #b7cd69;
+  border-color: #b7cd69;
+}
+.paint-quickbar button:disabled { opacity: 0.35; cursor: default; }
+.paint-quickbar-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: #363d38;
+}

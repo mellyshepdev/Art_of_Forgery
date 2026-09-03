@@ -2,8 +2,12 @@ import "./app.studio.css";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { toJpeg, toPng } from "html-to-image";
 import { cardTemplates, templateSrc } from "./data/cardTemplates";
-import { cardSlots as initialCardSlots, radiiOf, samplePoints, slotStyle, type CardSlot, type SlotPoint, type SlotRadii } from "./data/cardSlots";
+import { cardSlots as initialCardSlots, radiiOf, samplePoints, slotById, slotStyle, type CardSlot, type SlotPoint, type SlotRadii } from "./data/cardSlots";
 import { ColorWheel } from "./cardstudio/colorwheel";
+import { DEFAULT_BRUSH, type BrushState } from "./paint/brushes";
+import { BrushPanel } from "./paint/BrushPanel";
+import { PaintCanvas, type PaintCanvasHandle } from "./paint/PaintCanvas";
+import "./paint/paint.css";
 
 /** Colour a slot falls back to in the picker before one has been chosen. */
 const DEFAULT_FILL = "#b0c666";
@@ -152,6 +156,7 @@ const slotsToSource = (slots: CardSlot[]) => {
   return `export const cardSlots: CardSlot[] = [\n${lines.join("\n")}\n];\n`;
 };
 import {
+  Brush,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -159,8 +164,10 @@ import {
   CircleHelp,
   Cloud,
   Download,
+  Eraser,
   Eye,
   EyeOff,
+  FilePlus2,
   Frame,
   Hand,
   ImagePlus,
@@ -176,6 +183,7 @@ import {
   Redo2,
   RotateCcw,
   Sparkles,
+  Trash2,
   Undo2,
   Upload,
   X,
@@ -447,6 +455,16 @@ function App() {
   const [rotation, setRotation] = useState(0);
   const [slots, setSlots] = useState<CardSlot[]>(loadSlots);
   const dragRef = useRef<{ id: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+
+  // Paint mode (from the card-creator lineage).
+  const paintRef = useRef<PaintCanvasHandle>(null);
+  const lastBrushTypeRef = useRef<BrushState["type"]>("brush");
+  const [panelMode, setPanelMode] = useState<"layers" | "paint">("layers");
+  const [brush, setBrush] = useState<BrushState>(DEFAULT_BRUSH);
+  const [eyedropper, setEyedropper] = useState(false);
+  const [paintHistory, setPaintHistory] = useState({ canUndo: false, canRedo: false });
+  const [bgBusy, setBgBusy] = useState(false);
+  const paintMode = panelMode === "paint";
   const slotDragRef = useRef<{ id: number; slotId: number; startX: number; startY: number; startSlotX: number; startSlotY: number } | null>(null);
   const cornerDragRef = useRef<{ id: number; slotId: number; corner: CornerIndex; startX: number; startY: number; startRadius: number } | null>(null);
   const pointDragRef = useRef<{ id: number; slotId: number; index: number } | null>(null);
@@ -783,9 +801,37 @@ function App() {
     setPan({ x: 0, y: 0 });
   };
 
+  // Paint-mode handlers (card-creator lineage).
+  const newBlankCanvas = () => {
+    setPanelMode("paint");
+    setEyedropper(false);
+    window.requestAnimationFrame(() => paintRef.current?.clearWhite());
+  };
+
+  const handleUndo = () => {
+    if (paintMode) paintRef.current?.undo();
+    else undo();
+  };
+
+  const handleRedo = () => {
+    if (paintMode) paintRef.current?.redo();
+    else redo();
+  };
+
+  const toggleEraser = () => {
+    setEyedropper(false);
+    setBrush((current) => {
+      if (current.type === "eraser") {
+        return { ...current, type: lastBrushTypeRef.current };
+      }
+      lastBrushTypeRef.current = current.type;
+      return { ...current, type: "eraser" };
+    });
+  };
+
   /* Grab-to-pan. PointerEvents means mouse, pen and touch all take the same
      path, and capture keeps the drag alive if the cursor leaves the stage. */
-  const canPan = zoomLocked || tool === "hand";
+  const canPan = (zoomLocked || tool === "hand") && !paintMode;
 
   /* Multi-touch. Every live pointer is tracked so two fingers can pinch to
      zoom and drag to pan together - the trackpad is the thing making this work
@@ -1253,8 +1299,11 @@ function App() {
           <span>{cardName || "Untitled card"}</span><small>{template.name}</small>
         </div>
         <div className="top-actions">
-          <ToolButton label="Undo (Ctrl+Z)" onClick={undo} disabled={!historyState.canUndo}><Undo2 size={17} /></ToolButton>
-          <ToolButton label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!historyState.canRedo}><Redo2 size={17} /></ToolButton>
+          <ToolButton label="Undo (Ctrl+Z)" onClick={handleUndo}
+            disabled={paintMode ? !paintHistory.canUndo : !historyState.canUndo}><Undo2 size={17} /></ToolButton>
+          <ToolButton label="Redo (Ctrl+Shift+Z)" onClick={handleRedo}
+            disabled={paintMode ? !paintHistory.canRedo : !historyState.canRedo}><Redo2 size={17} /></ToolButton>
+          <button className="ghost-top-button" onClick={newBlankCanvas} title="Start a blank white canvas"><FilePlus2 size={15} /> New canvas</button>
           <button className="save-button" onClick={() => flash("Draft saved to your workspace")}><Cloud size={15} /> Save</button>
           <div className="export-wrap">
             <button className="export-button" onClick={exportCard} disabled={isExporting}>
@@ -1278,20 +1327,71 @@ function App() {
       </header>
 
       <div className={`workspace ${panelsAway ? "panels-away" : ""}`}>
-        <aside className="layers-panel">
-          <div className="panel-heading"><span>AREAS (SLOTS)</span><button onClick={() => { console.log(JSON.stringify(slots, null, 2)); flash("Slots JSON logged to console!"); }}>Export JSON</button></div>
-          <div className="layer-stack">
-            {slots.map((slot) => (
-              <button key={slot.id} className={`layer-row ${selectedSlot === slot.id ? "is-active" : ""}`} onClick={() => pickSlot(slot.id)}>
-                <span className="layer-number">{slot.id.toString().padStart(2, '0')}</span>
-                <span className="layer-copy"><strong>{slot.name}</strong><small>{slot.shape} - {slot.kind}</small></span>
+        <aside className={`layers-panel ${paintMode ? "is-paint" : ""}`}>
+          <div className="panel-heading">
+            <span>{paintMode ? "BRUSHES" : "AREAS (SLOTS)"}</span>
+            <div className="panel-mode-toggle" role="group" aria-label="Left panel mode">
+              <button
+                type="button"
+                className={!paintMode ? "is-active" : ""}
+                aria-pressed={!paintMode}
+                title="Card layers"
+                onClick={() => setPanelMode("layers")}
+              >
+                <Layers3 size={13} />
               </button>
-            ))}
+              <button
+                type="button"
+                className={paintMode ? "is-active" : ""}
+                aria-pressed={paintMode}
+                title="Paint &amp; brushes"
+                onClick={() => setPanelMode("paint")}
+              >
+                <Brush size={13} />
+              </button>
+            </div>
+            {!paintMode && (
+              <button onClick={() => { console.log(JSON.stringify(slots, null, 2)); flash("Slots JSON logged to console!"); }}>Export JSON</button>
+            )}
           </div>
-          <div className="layers-footer">
-            <button onClick={() => flash("Background layer feature coming next!")}><Plus size={15} /> Add Layer 1 Background</button>
-            <button aria-label="Help"><CircleHelp size={16} /></button>
-          </div>
+          {paintMode ? (
+            <BrushPanel
+              brush={brush}
+              onChange={(patch) => setBrush((current) => ({ ...current, ...patch }))}
+              eyedropper={eyedropper}
+              onToggleEyedropper={() => setEyedropper((value) => !value)}
+              onWhiteCanvas={() => paintRef.current?.clearWhite()}
+              onClearCanvas={() => paintRef.current?.clearTransparent()}
+              onRemoveBackground={() => paintRef.current?.removeBackground()}
+              onLoadImage={(file) => paintRef.current?.loadImageFile(file)}
+              bgBusy={bgBusy}
+            />
+          ) : (
+            <>
+              <div className="layer-stack">
+                {layers.map((layer) => (
+                  <button key={layer.id} className={`layer-row ${selectedLayer === layer.id ? "is-active" : ""}`} onClick={() => selectLayer(layer.id)}>
+                    <span className="layer-number">{layer.number}</span>
+                    <span className="layer-copy"><strong>{layer.label}</strong><small>{layer.helper}</small></span>
+                    <span
+                      className="visibility-toggle"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${visibility[layer.id] ? "Hide" : "Show"} ${layer.label}`}
+                      onClick={(event) => { event.stopPropagation(); toggleVisibility(layer.id); }}
+                      onKeyDown={(event) => { if (event.key === "Enter") toggleVisibility(layer.id); }}
+                    >
+                      {visibility[layer.id] ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="layers-footer">
+                <button onClick={() => flash("Blank graphic layer added")}><Plus size={15} /> Add layer</button>
+                <button aria-label="Help"><CircleHelp size={16} /></button>
+              </div>
+            </>
+          )}
         </aside>
 
         <main className={`canvas-area ${dotCursor ? "cursor-dot" : ""}`}>
@@ -1577,8 +1677,42 @@ function App() {
                 {cardSubtitle && (
                   <div className="slot-subtitle" style={slotStyle(slotOf(2))}>{cardSubtitle}</div>
                 )}
+
+                <PaintCanvas
+                  ref={paintRef}
+                  active={paintMode}
+                  brush={brush}
+                  eyedropper={eyedropper}
+                  onPickColor={(hex) => {
+                    setBrush((current) => ({ ...current, color: hex }));
+                    setEyedropper(false);
+                    flash(`Picked ${hex.toUpperCase()}`);
+                  }}
+                  onHistoryChange={(canUndo, canRedo) => setPaintHistory({ canUndo, canRedo })}
+                  onBusyChange={setBgBusy}
+                  onNotify={flash}
+                />
               </div>
             </div>
+
+            {paintMode && (
+              <div className="paint-quickbar">
+                <button type="button" onClick={handleUndo} disabled={!paintHistory.canUndo} title="Undo" aria-label="Undo"><Undo2 size={16} /></button>
+                <button type="button" onClick={handleRedo} disabled={!paintHistory.canRedo} title="Redo" aria-label="Redo"><Redo2 size={16} /></button>
+                <span className="paint-quickbar-sep" />
+                <button
+                  type="button"
+                  className={brush.type === "eraser" ? "is-active" : ""}
+                  aria-pressed={brush.type === "eraser"}
+                  onClick={toggleEraser}
+                  title="Eraser"
+                  aria-label="Eraser"
+                >
+                  <Eraser size={16} />
+                </button>
+                <button type="button" onClick={() => paintRef.current?.clearTransparent()} title="Erase everything" aria-label="Erase everything"><Trash2 size={16} /></button>
+              </div>
+            )}
             <div className="canvas-caption"><span>{cardName}</span><small>744 x 1056 px</small></div>
           </div>
         </main>
