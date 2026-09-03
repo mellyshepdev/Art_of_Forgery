@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 :root {
+  /* Height of the mode switcher above App's own topbar. Every full-height
+     rule below subtracts it: .workspace was calc(100vh - 62px), written when
+     App owned the whole viewport, so adding the strip pushed the bottom of the
+     page (and the buttons sitting in it) off-screen by exactly this much. */
+  --mode-nav-h: 38px;
   color: #e9ece9;
   background: #101312;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -15,7 +20,7 @@ button, input { font: inherit; }
 button, label { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 
-.app-shell { min-height: 100vh; background: #111412; }
+.app-shell { min-height: calc(100vh - var(--mode-nav-h)); background: #111412; }
 
 .topbar {
   position: relative;
@@ -39,7 +44,7 @@ button { color: inherit; }
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 38px;
+  height: var(--mode-nav-h);
   padding: 0 14px;
   background: #151816;
 }
@@ -158,7 +163,7 @@ button { color: inherit; }
 
 .avatar { width: 31px; height: 31px; margin-left: 5px; border: 1px solid #5e655d; border-radius: 50%; color: #ced5d0; background: #333934; font-size: 10px; font-weight: 700; cursor: pointer; }
 
-.workspace { display: grid; grid-template-columns: 246px minmax(480px, 1fr) 312px; height: calc(100vh - 62px); }
+.workspace { display: grid; grid-template-columns: 246px minmax(480px, 1fr) 312px; height: calc(100vh - var(--mode-nav-h) - 62px); }
 .layers-panel, .properties-panel { position: relative; z-index: 12; min-height: 0; background: #171a18; }
 .layers-panel { display: grid; grid-template-rows: 47px 1fr 49px; border-right: 1px solid #2a2f2c; }
 .panel-heading, .section-label, .properties-title, .layers-footer, .properties-footer { display: flex; align-items: center; justify-content: space-between; }
@@ -506,7 +511,7 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
   .topbar { position: sticky; top: 0; grid-template-columns: 190px 1fr; }
   .project-crumbs { display: none; }
   .top-actions { justify-content: flex-end; }
-  .workspace { grid-template-columns: 66px minmax(420px, 1fr) 272px; height: calc(100vh - 62px); }
+  .workspace { grid-template-columns: 66px minmax(420px, 1fr) 272px; height: calc(100vh - var(--mode-nav-h) - 62px); }
   .panel-heading { justify-content: center; padding: 0; }
   .panel-heading span, .panel-heading button, .layer-copy, .visibility-toggle, .layers-footer button:first-child { display: none; }
   .layer-row { grid-template-columns: 1fr; min-height: 51px; place-items: center; }
@@ -637,6 +642,48 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
 
 /* Groups the buttons in a section header so space-between keeps them
    together on the right instead of spreading them across the row. */
+/* ── Studio skin for the canvas and 3D modes ──────────────────────────────
+   Those two panes came in styled in Tailwind's zinc scale with emerald and
+   indigo accents, which matches nothing else here - the studio is #101312 /
+   #151816 / #171a18 surfaces, #292e2b rules and a single #c8dc82 olive accent.
+   Rewriting every className across 48 KB of JSX would be a large, risky diff
+   for a colour change, so the palette is remapped in one place instead: the
+   panes are wrapped in .studio-skin and the utilities they use are redefined
+   under it.
+
+   These rules are unlayered, so they beat Tailwind's @layer utilities
+   regardless of specificity - no !important needed. Only colour is remapped;
+   layout utilities are left alone. */
+.studio-skin { color: #e9ece9; font-family: inherit; }
+
+.studio-skin .bg-zinc-950 { background-color: #101312; }
+.studio-skin .bg-zinc-900, .studio-skin .bg-zinc-900\/95 { background-color: #171a18; }
+.studio-skin .bg-zinc-800, .studio-skin .bg-zinc-800\/90, .studio-skin .bg-zinc-800\/60 { background-color: #1b201d; }
+.studio-skin .bg-zinc-700 { background-color: #262c28; }
+.studio-skin .bg-zinc-600 { background-color: #363d38; }
+
+.studio-skin .text-zinc-100 { color: #e9ece9; }
+.studio-skin .text-zinc-200 { color: #d2d8d3; }
+.studio-skin .text-zinc-300 { color: #c9cfc9; }
+.studio-skin .text-zinc-400 { color: #8d958f; }
+.studio-skin .text-zinc-500 { color: #79817c; }
+.studio-skin .text-zinc-600 { color: #6f7772; }
+
+.studio-skin .border-zinc-800 { border-color: #292e2b; }
+.studio-skin .border-zinc-700, .studio-skin .border-zinc-700\/60 { border-color: #363d38; }
+
+/* One accent, not two. emerald and indigo both become the olive the rest of
+   the app uses, so a selected tool reads the same in every mode. */
+.studio-skin .bg-emerald-500, .studio-skin .bg-emerald-600,
+.studio-skin .bg-indigo-500, .studio-skin .bg-indigo-600 {
+  background-image: linear-gradient(145deg, #27301d, #171b15);
+  background-color: #27301d;
+  border: 1px solid #55603c;
+  color: #c8dc82;
+}
+.studio-skin .text-emerald-400, .studio-skin .text-emerald-500,
+.studio-skin .text-indigo-400, .studio-skin .text-indigo-500 { color: #c8dc82; }
+
 .section-actions { display: flex; align-items: center; gap: 8px; }
 
 .inline-eye {

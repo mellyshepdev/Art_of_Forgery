@@ -23,7 +23,7 @@ export function AppWrapper() {
   });
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-zinc-950">
+    <div className="flex flex-col h-screen w-screen overflow-hidden">
       <AppNavigation mode={appMode} setMode={setAppMode} />
 
       <div className="flex-1 flex w-full h-full overflow-hidden relative">
@@ -35,7 +35,7 @@ export function AppWrapper() {
         </div>
 
         <div
-          className="w-full h-full flex flex-col flex-1"
+          className="studio-skin w-full h-full flex flex-col flex-1"
           style={{ display: appMode === "canvas" ? "flex" : "none" }}
         >
           <FreeCanvasMode
@@ -47,7 +47,7 @@ export function AppWrapper() {
         </div>
 
         <div
-          className="w-full h-full flex flex-col flex-1"
+          className="studio-skin w-full h-full flex flex-col flex-1"
           style={{ display: appMode === "3d" ? "flex" : "none" }}
         >
           <ThreeDMode state={threeDState} setState={setThreeDState} />

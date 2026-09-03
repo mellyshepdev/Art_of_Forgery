@@ -38,7 +38,7 @@ const CORNER_SIGNS: Record<CornerIndex, [number, number]> = {
 const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
 
 /** Zoom ceiling for close work on outline points. */
-const ZOOM_MAX = 1000;
+const ZOOM_MAX = 1500;
 /** How far a point travels per unit of finger travel. Below 1 so a full sweep
  *  of the pad is a fraction of the card - the point of the tablet is fine
  *  control, not covering ground quickly. */
