@@ -4,7 +4,14 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: forge
-    restart: unless-stopped
+    # "no", not unless-stopped, and this is load-bearing. forge is idle-stopped
+    # by locator after 15m of no traffic (idle_stop in locator.yml) and brought
+    # back by wake-on-request when someone visits. A restart policy fights that:
+    # unless-stopped resurrects the container the moment the Docker daemon
+    # restarts or the host reboots, so the box would come back up running a
+    # service nobody asked for and the idle policy would look broken. Wake is
+    # the only thing that should start this container.
+    restart: "no"
     # Routing lives in Traefik's file provider (dynamic-config/forge.yml), which
     # serves forge.prime-quality.online -> http://forge:80, and only that. These
     # labels used to publish forge.theofficialblacksheepco.online as a second way
