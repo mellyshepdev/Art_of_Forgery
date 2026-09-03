@@ -931,6 +931,14 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
   cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='8' cy='8' r='4' fill='none' stroke='%23000' stroke-opacity='.6' stroke-width='3'/%3E%3Ccircle cx='8' cy='8' r='4' fill='none' stroke='%23fff' stroke-width='1.4'/%3E%3Ccircle cx='8' cy='8' r='1' fill='%23fff'/%3E%3C/svg%3E") 8 8, crosshair !important;
 }
 
+/* Second precision stage. Same shape at 10px with a 0.75px centre dot, so the
+   hotspot sits on one pixel rather than inside a 4px ring - the ring itself is
+   what obscures the pixel you are aiming at once you are zoomed past ~800%. */
+.canvas-area.cursor-dot-tiny,
+.canvas-area.cursor-dot-tiny * {
+  cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Ccircle cx='5' cy='5' r='2.5' fill='none' stroke='%23000' stroke-opacity='.6' stroke-width='2'/%3E%3Ccircle cx='5' cy='5' r='2.5' fill='none' stroke='%23fff' stroke-width='1'/%3E%3Ccircle cx='5' cy='5' r='.75' fill='%23fff'/%3E%3C/svg%3E") 5 5, crosshair !important;
+}
+
 /* The tablet's own cursor, drawn in the page because a web app cannot move the
    OS pointer. Never hit-testable: if it were, document.elementFromPoint would
    return this element and every synthesised event would land on the cursor
@@ -953,6 +961,15 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
   border-radius: 50%;
   background: #35d07f;
 }
+/* The pad cursor is drawn in the page, so it does not inherit the CSS cursor
+   above and has to shrink alongside it by hand. Margin stays at -half so the
+   hotspot remains dead centre at every size. */
+.pad-cursor.is-small { width: 15px; height: 15px; margin: -7.5px; }
+.pad-cursor.is-small::after { inset: 5px; }
+
+.pad-cursor.is-tiny { width: 9px; height: 9px; margin: -4.5px; border-width: 1.5px; }
+.pad-cursor.is-tiny::after { inset: 2px; }
+
 .pad-cursor.is-down { transform: scale(.7); border-color: #ff3c5a; }
 .pad-cursor.is-down::after { background: #ff3c5a; }
 

@@ -864,7 +864,12 @@ function App() {
      report, so they sit on top of the exact pixel being aimed at - fine for
      dragging a whole slot, useless for placing a point. The dot is 16px with
      its hotspot dead centre. */
-  const [dotCursor, setDotCursor] = useState(false);
+  /* Cursor precision, cycled rather than toggled: 0 default, 1 dot, 2 tiny dot.
+     The tablet cursor shrinks with it - it is drawn in the page rather than by
+     the OS, so it does not follow the CSS cursor and has to be told separately
+     or the pointer stays fat exactly when you are aiming most carefully. */
+  const [dotCursor, setDotCursor] = useState(0);
+  const cursorLabel = ["Cursor: default", "Cursor: precision dot", "Cursor: tiny dot"];
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   /* Panels-away without the Fullscreen API. Browsers only grant full screen on
@@ -1300,7 +1305,7 @@ function App() {
             event would land on it instead of the control underneath. */}
         {padState === "live" && padCount > 0 && (
           <div
-            className={`pad-cursor ${padDown ? "is-down" : ""}`}
+            className={`pad-cursor ${padDown ? "is-down" : ""} ${dotCursor === 1 ? "is-small" : dotCursor === 2 ? "is-tiny" : ""}`}
             style={{ left: padCursor.x, top: padCursor.y }}
             aria-hidden="true"
             data-export-hide="true"
@@ -1411,7 +1416,7 @@ function App() {
           )}
         </aside>
 
-        <main className={`canvas-area ${dotCursor ? "cursor-dot" : ""}`}>
+        <main className={`canvas-area ${dotCursor === 1 ? "cursor-dot" : dotCursor === 2 ? "cursor-dot-tiny" : ""}`}>
           <div className="canvas-toolbar">
             <div className="tool-group">
               <ToolButton label="Select tool" active={tool === "select"} onClick={() => setTool("select")}><MousePointer2 size={16} /></ToolButton>
@@ -1452,9 +1457,9 @@ function App() {
                 onClick={togglePad}
               ><Tablet size={16} /></ToolButton>
               <ToolButton
-                label={dotCursor ? "Cursor: precision dot" : "Cursor: default"}
-                active={dotCursor}
-                onClick={() => setDotCursor((v) => !v)}
+                label={cursorLabel[dotCursor]}
+                active={dotCursor > 0}
+                onClick={() => setDotCursor((v) => (v + 1) % 3)}
               ><Crosshair size={16} /></ToolButton>
               <ToolButton
                 label={panelsAway ? "Show panels" : "Hide panels / full screen"}
