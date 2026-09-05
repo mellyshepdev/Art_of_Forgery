@@ -1,9 +1,10 @@
-import { LayoutGrid, Image as ImageIcon, Box } from "lucide-react";
+import { LayoutGrid, Layers, Image as ImageIcon, Box } from "lucide-react";
 
-export type AppMode = "card" | "canvas" | "3d";
+export type AppMode = "card" | "border" | "canvas" | "3d";
 
 const TABS: { id: AppMode; label: string; icon: typeof LayoutGrid }[] = [
   { id: "card",   label: "Card",   icon: LayoutGrid },
+  { id: "border", label: "Border", icon: Layers },
   { id: "canvas", label: "Canvas", icon: ImageIcon },
   { id: "3d",     label: "3D",     icon: Box },
 ];
