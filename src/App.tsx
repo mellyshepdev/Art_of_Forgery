@@ -48,6 +48,8 @@ const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
 const ART_BASE_W = 848;
 const ART_BASE_H = 1264;
 const ZOOM_MAX = 1500;
+/** Zoom at which the whole card fits the canvas. */
+const FIT_ZOOM = 78;
 /** How far a point travels per unit of finger travel. Below 1 so a full sweep
  *  of the pad is a fraction of the card - the point of the tablet is fine
  *  control, not covering ground quickly. */
@@ -869,13 +871,23 @@ function App() {
     window.setTimeout(() => setToast(null), 2200);
   };
 
-  /** Click a slot: select it, zoom to 350% centred on it (if not editing), and lock the zoom */
+  /* Zoom that makes a slot fill the viewport the way the whole card fills it
+     at FIT_ZOOM. A slot's w/h are fractions of the card, so dividing gives the
+     magnification that blows that fraction up to full width - a rivet at 5.9%
+     lands near the 1500% ceiling, the main portrait at 77.7% barely moves.
+     A flat 350% for every slot was the original behaviour and it was useless at
+     both ends: too far out to place a point on a rivet, too far in to see the
+     portrait. Floored so selecting a big slot still visibly zooms. */
+  const zoomToFit = (s: CardSlot) =>
+    Math.round(Math.max(240, Math.min(ZOOM_MAX, (FIT_ZOOM * 0.86) / Math.max(s.w, s.h))));
+
+  /** Click a slot: select it, zoom to fit it (if not editing), and lock the zoom */
   const pickSlot = (id: number) => {
     const slot = slots.find((s) => s.id === id);
     if (!slot) return;
     setSelectedSlot(id);
     if (tool !== "edit-slots") {
-      setZoom(350);
+      setZoom(zoomToFit(slot));
       setZoomLocked(true);
       setPan({ x: 0, y: 0 });
       flash(`${slot.id}. ${slot.name} - drag to move around`);
@@ -886,7 +898,7 @@ function App() {
     setRotation(0);          // straighten the card when fitting to canvas
     setZoomLocked(false);
     setSelectedSlot(null);
-    setZoom(78);
+    setZoom(FIT_ZOOM);
     setPan({ x: 0, y: 0 });
   };
 

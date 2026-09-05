@@ -4,7 +4,7 @@ export type CardTemplate = {
   file: string;
 };
 
-/** Illustrated card frames. Every template shares the same 19-slot grid,
+/** Illustrated card frames. Every template shares the same 20-slot grid,
  *  so switching template never moves a slot. */
 export const cardTemplates: CardTemplate[] = [
   { id: "ivory", name: "Ivory Relief", file: "1786336500942" },
