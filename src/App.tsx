@@ -1439,23 +1439,6 @@ function App() {
             disabled={paintMode ? !paintHistory.canRedo : !historyState.canRedo}><Redo2 size={17} /></ToolButton>
           <button className="ghost-top-button" onClick={newBlankCanvas} title="Start a blank white canvas"><FilePlus2 size={15} /> New canvas</button>
           <button className="save-button" onClick={() => flash("Draft saved to your workspace")}><Cloud size={15} /> Save</button>
-          <div className="export-wrap">
-            <button className="export-button" onClick={exportCard} disabled={isExporting}>
-              <Download size={16} /> {isExporting ? "Rendering" : "Export"}
-            </button>
-            <button className="export-chevron" aria-label="Export settings" onClick={() => setExportOpen((open) => !open)}><ChevronDown size={15} /></button>
-            {exportOpen && (
-              <div className="export-menu">
-                <p>EXPORT FORMAT</p>
-                {(["png", "jpg", "svg"] as ExportFormat[]).map((format) => (
-                  <button key={format} onClick={() => setExportFormat(format)}>
-                    <span>{format.toUpperCase()} <small>{format === "png" ? "Transparent-ready" : format === "jpg" ? "Smaller file" : "Vector, print-ready"}</small></span>
-                    {exportFormat === format && <Check size={15} />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
           <AccountMenu />
         </div>
       </header>
@@ -1511,8 +1494,33 @@ function App() {
                 ))}
               </div>
               <div className="layers-footer">
-                <button onClick={() => flash("Blank graphic layer added")}><Plus size={15} /> Add layer</button>
-                <button aria-label="Help"><CircleHelp size={16} /></button>
+                <div className="panel-io">
+                  <label className="io-button">
+                    <input type="file" accept="image/*" onChange={(event) => readUpload(event, setArtUrl, "Artwork replaced")} />
+                    <Upload size={14} /> Import
+                  </label>
+          <div className="export-wrap">
+            <button className="export-button" onClick={exportCard} disabled={isExporting}>
+              <Download size={16} /> {isExporting ? "Rendering" : "Export"}
+            </button>
+            <button className="export-chevron" aria-label="Export settings" onClick={() => setExportOpen((open) => !open)}><ChevronDown size={15} /></button>
+            {exportOpen && (
+              <div className="export-menu">
+                <p>EXPORT FORMAT</p>
+                {(["png", "jpg", "svg"] as ExportFormat[]).map((format) => (
+                  <button key={format} onClick={() => setExportFormat(format)}>
+                    <span>{format.toUpperCase()} <small>{format === "png" ? "Transparent-ready" : format === "jpg" ? "Smaller file" : "Vector, print-ready"}</small></span>
+                    {exportFormat === format && <Check size={15} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+                </div>
+                <div className="panel-io-secondary">
+                  <button onClick={() => flash("Blank graphic layer added")}><Plus size={15} /> Add layer</button>
+                  <button aria-label="Help"><CircleHelp size={16} /></button>
+                </div>
               </div>
             </>
           )}

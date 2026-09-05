@@ -415,12 +415,8 @@ export const ThreeDMode: React.FC<ThreeDModeProps> = ({ state, setState }) => {
           </button>
         </div>
         <div className="layers-footer">
-          <button onClick={() => setState((s) => ({ ...s, gizmoMode: "translate" }))}>Reset gizmo</button>
-        </div>
-      </aside>
-
-      <div className="canvas-toolbar">
-        <label className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg cursor-pointer text-xs font-semibold transition">
+          <div className="panel-io">
+            <label className="io-button">
           <Upload size={15} />
           <span>Load .GLTF / .GLB</span>
           <input
@@ -429,7 +425,15 @@ export const ThreeDMode: React.FC<ThreeDModeProps> = ({ state, setState }) => {
             className="hidden"
             onChange={handleFileUpload}
           />
-        </label>
+            </label>
+          </div>
+          <div className="panel-io-secondary">
+          <button onClick={() => setState((s) => ({ ...s, gizmoMode: "translate" }))}>Reset gizmo</button>
+        </div>
+        </div>
+      </aside>
+
+      <div className="canvas-toolbar">
 
         <div className="h-4 w-px bg-zinc-700" />
 

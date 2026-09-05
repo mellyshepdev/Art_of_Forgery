@@ -1216,3 +1216,59 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
 @media (max-width: 1500px) {
   .workspace { grid-template-columns: var(--panel-w) minmax(320px, 1fr) var(--panel-w); }
 }
+
+
+/* --- import/export in the panel footer --- */
+/* Import and Export live in the bottom-left panel footer on every page, in the
+   same spot, so the controls do not move as you switch between card, canvas
+   and 3D. The footer is two rows: the IO pair, then whatever that page's
+   footer already had. */
+.layers-panel { grid-template-rows: 47px 1fr 88px; }
+.layers-footer {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 6px;
+  align-content: center;
+  padding: 8px 10px;
+}
+.panel-io { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.panel-io-secondary { display: flex; align-items: center; justify-content: space-between; }
+.panel-io .export-wrap { position: relative; display: flex; }
+
+.io-button, .panel-io .export-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #3b423d;
+  border-radius: 4px;
+  color: #c9cfc9;
+  background: #1f241f;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.io-button:hover, .panel-io .export-button:hover { color: #e4e8e3; background: #262c26; }
+.io-button input[type="file"] { display: none; }
+
+.panel-io .export-button { border-radius: 4px 0 0 4px; border-right: 0; }
+.panel-io .export-chevron {
+  display: grid;
+  width: 24px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #3b423d;
+  border-radius: 0 4px 4px 0;
+  color: #9aa29c;
+  background: #1f241f;
+  cursor: pointer;
+}
+.panel-io .export-chevron:hover { color: #e4e8e3; background: #262c26; }
+
+/* The menu was anchored under a top bar; from a footer it has to open upward
+   or it renders off the bottom of the window. */
+.panel-io .export-menu { top: auto; bottom: 34px; right: 0; left: auto; }

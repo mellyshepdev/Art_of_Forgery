@@ -342,12 +342,8 @@ export const FreeCanvasMode: React.FC<FreeCanvasModeProps> = ({
           ))}
         </div>
         <div className="layers-footer">
-          <button onClick={() => setSelectedId(null)}>Deselect</button>
-        </div>
-      </aside>
-
-      <div className="canvas-toolbar">
-        <label className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg cursor-pointer text-xs font-semibold transition">
+          <div className="panel-io">
+            <label className="io-button">
           <Upload size={15} />
           <span>Import Images</span>
           <input
@@ -357,7 +353,15 @@ export const FreeCanvasMode: React.FC<FreeCanvasModeProps> = ({
             className="hidden"
             onChange={handleFileUpload}
           />
-        </label>
+            </label>
+          </div>
+          <div className="panel-io-secondary">
+          <button onClick={() => setSelectedId(null)}>Deselect</button>
+        </div>
+        </div>
+      </aside>
+
+      <div className="canvas-toolbar">
 
         <div className="h-4 w-px bg-zinc-700" />
 
