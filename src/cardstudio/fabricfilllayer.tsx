@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import * as fabric from "fabric";
-import type { Fill, ZoneGeometry } from "./types";
+import type { Fill } from "./types";
 import { PATTERN_DATA_URLS } from "./patterns";
+import { radiiOf, samplePoints, type CardSlot } from "../data/cardSlots";
 
 // ---------------------------------------------------------------------------
 // One Fabric.Canvas per zone, sized to that zone's box, positioned absolutely
@@ -11,17 +12,18 @@ import { PATTERN_DATA_URLS } from "./patterns";
 // locked outline or shift the zone's geometry.
 // ---------------------------------------------------------------------------
 
-function clipPathFor(geometry: ZoneGeometry, w: number, h: number): fabric.Object {
-  switch (geometry.shape) {
-    case "circle":
-      return new fabric.Ellipse({ rx: w / 2, ry: h / 2, left: 0, top: 0, originX: "center", originY: "center" });
-    case "pill":
-      return new fabric.Rect({ width: w, height: h, rx: h / 2, ry: h / 2, left: 0, top: 0, originX: "center", originY: "center" });
-    case "roundedRect":
-      return new fabric.Rect({ width: w, height: h, rx: geometry.radius ?? 12, ry: geometry.radius ?? 12, left: 0, top: 0, originX: "center", originY: "center" });
-    default:
-      return new fabric.Rect({ width: w, height: h, left: 0, top: 0, originX: "center", originY: "center" });
-  }
+// The clip is always a polygon, never an Ellipse/Rect, because the slot grid
+// in cardSlots.ts describes outlines two different ways - per-corner `radii`
+// and hand-dragged `points` - and fabric's Rect only takes one uniform rx/ry.
+// samplePoints() already traces `radii` into the same point list the DOM
+// renders, so going through it for both cases is what keeps the fabric fill
+// aligned to the pixel with the CSS outline sitting on top of it.
+function clipPathFor(slot: CardSlot, w: number, h: number): fabric.Object {
+  const pts = slot.points?.length ? slot.points : samplePoints({ ...slot, radii: radiiOf(slot) });
+  return new fabric.Polygon(
+    pts.map(([x, y]) => ({ x: x * w, y: y * h })),
+    { left: 0, top: 0, originX: "center", originY: "center" },
+  );
 }
 
 function angleToCoords(angleDeg: number) {
@@ -37,12 +39,12 @@ function angleToCoords(angleDeg: number) {
 }
 
 export function FabricFillLayer({
-  geometry,
+  slot,
   fill,
   width,
   height,
 }: {
-  geometry: ZoneGeometry;
+  slot: CardSlot;
   fill: Fill;
   width: number;
   height: number;
@@ -69,7 +71,7 @@ export function FabricFillLayer({
 
     const render = async () => {
       canvas.clear();
-      const clip = clipPathFor(geometry, width, height);
+      const clip = clipPathFor(slot, width, height);
       clip.set({ left: width / 2, top: height / 2 });
 
       let bg: fabric.Object;
@@ -89,8 +91,9 @@ export function FabricFillLayer({
           ? fill.patternImageUrl
           : PATTERN_DATA_URLS[fill.pattern ?? "diagonal-stripes"](fill.patternColor ?? "#8a6d3a");
         const img = await loadImage(src);
+        // fabric.Pattern wants the raw <img>, not the FabricImage wrapper.
         const pattern = new fabric.Pattern({
-          source: img,
+          source: img.getElement() as HTMLImageElement,
           repeat: "repeat",
           patternTransform: [fill.patternScale ?? 1, 0, 0, fill.patternScale ?? 1, 0, 0],
         });
@@ -127,7 +130,7 @@ export function FabricFillLayer({
     return () => {
       cancelled = true;
     };
-  }, [geometry, fill, width, height]);
+  }, [slot, fill, width, height]);
 
   return <canvas ref={canvasElRef} className="fabric-fill-layer" />;
 }

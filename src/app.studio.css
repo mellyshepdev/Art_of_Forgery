@@ -88,3 +88,16 @@
 .texture-colors { display: flex; gap: 8px; margin: 8px 0; }
 .ghost-button { padding: 7px 10px; border: 1px solid #373e39; border-radius: 3px; color: #858d87; background: #1c201d; font-size: 9px; cursor: pointer; }
 .ghost-button.is-active { color: #101312; background: #b0c666; border-color: #b0c666; }
+
+/* --- Advanced fill: wiring for the cardstudio panel + per-slot canvas ----- */
+
+/* The fill canvas sits on the slot's own box, under the slot button, so the
+   button keeps its border, its text and all of its hit-testing. */
+.slot-rich-fill { position: absolute; pointer-events: none; z-index: 1; overflow: hidden; }
+
+.fill-controls { display: grid; gap: 10px; }
+.fill-panel { display: grid; gap: 10px; }
+.fill-controls .upload-zone { display: grid; gap: 6px; font-size: 9px; color: #929a94; }
+.fill-controls .range-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fill-controls .range-label { display: flex; justify-content: space-between; font-size: 9px; color: #929a94; }
+.fill-controls input[type="range"] { width: 100%; }
