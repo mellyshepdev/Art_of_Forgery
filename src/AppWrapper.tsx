@@ -3,11 +3,13 @@ import App from "./App";
 import { AppNavigation, type AppMode } from "./components/AppNavigation";
 import { FreeCanvasMode, type CanvasImageItem } from "./components/FreeCanvasMode";
 import { ThreeDMode, type ThreeDState } from "./components/ThreeDMode";
+import { LayeredBorderCreator, type SlotAssetConfig } from "./components/LayeredBorderCreator";
 
 export function AppWrapper() {
   const [appMode, setAppMode] = useState<AppMode>("card");
   const [canvasImages, setCanvasImages] = useState<CanvasImageItem[]>([]);
   const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
+  const [slotAssets, setSlotAssets] = useState<Record<number, SlotAssetConfig>>({});
   const [threeDState, setThreeDState] = useState<ThreeDState>({
     lightPos: { x: 3, y: 5, z: 4 },
     lightColor: "#ffffff",
@@ -32,6 +34,17 @@ export function AppWrapper() {
           style={{ display: appMode === "card" ? "flex" : "none" }}
         >
           <App />
+        </div>
+
+        <div
+          className="w-full h-full flex flex-col flex-1"
+          style={{ display: appMode === "border" ? "flex" : "none" }}
+        >
+          <LayeredBorderCreator
+            slotAssets={slotAssets}
+            setSlotAssets={setSlotAssets}
+            onApplyBorderToCard={() => setAppMode("card")}
+          />
         </div>
 
         <div

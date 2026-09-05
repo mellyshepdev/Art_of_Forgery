@@ -1,7 +1,7 @@
 import React from "react";
-import { LayoutGrid, Image as ImageIcon, Box } from "lucide-react";
+import { LayoutGrid, Image as ImageIcon, Box, Layers } from "lucide-react";
 
-export type AppMode = "card" | "canvas" | "3d";
+export type AppMode = "card" | "canvas" | "3d" | "border";
 
 interface AppNavigationProps {
   mode: AppMode;
@@ -31,6 +31,18 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({ mode, setMode }) =
         >
           <LayoutGrid size={15} />
           <span>Card Studio</span>
+        </button>
+
+        <button
+          onClick={() => setMode("border")}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            mode === "border"
+              ? "bg-amber-600 text-white shadow-md"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60"
+          }`}
+        >
+          <Layers size={15} />
+          <span>Border Creator</span>
         </button>
 
         <button
