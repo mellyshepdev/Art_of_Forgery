@@ -1,4 +1,4 @@
-import p5 from "p5";
+import type p5 from "p5";
 import type { TextureKind } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -6,6 +6,11 @@ import type { TextureKind } from "./types";
 // instance mode against an offscreen <canvas>, draws once, and hands back a
 // data URL. That URL is then used exactly like an uploaded image — Fabric.js
 // tiles or fits it as a pattern/image fill. p5 never touches the live DOM.
+//
+// p5 is pulled in with a dynamic import rather than a top-level one. It is by
+// far the heaviest dependency here, this app builds to a single inlined HTML
+// file, and most cards never bake a texture at all - so loading it eagerly put
+// the whole library in front of every user to serve a feature few reach for.
 // ---------------------------------------------------------------------------
 
 export interface TextureParams {
@@ -18,8 +23,9 @@ export interface TextureParams {
   height?: number;
 }
 
-export function bakeTexture(params: TextureParams): Promise<string> {
+export async function bakeTexture(params: TextureParams): Promise<string> {
   const { kind, seed, scale, colorA, colorB, width = 512, height = 512 } = params;
+  const { default: P5 } = await import("p5");
 
   return new Promise((resolve) => {
     const holder = document.createElement("div");
@@ -98,7 +104,7 @@ export function bakeTexture(params: TextureParams): Promise<string> {
       };
     };
 
-    const instance = new p5(sketch, holder);
+    const instance = new P5(sketch, holder);
   });
 }
 

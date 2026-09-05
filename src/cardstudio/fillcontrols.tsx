@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ChangeEvent } from "react";
 import type { Fill, FillKind } from "./types";
-import { ColorWheel } from "./ColorWheel";
+import { ColorWheel } from "./colorwheel";
 import { patternLibrary } from "./patterns";
 import { textureLibrary, bakeTexture } from "./textures";
 

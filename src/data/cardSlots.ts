@@ -71,7 +71,12 @@ export const pointsToClipPath = (points: SlotPoint[]) =>
   `polygon(${points.map(([x, y]) => `${round5(x * 100)}% ${round5(y * 100)}%`).join(", ")})`;
 
 /** The master grid. Shared by every template - this is what guarantees that
- *  switching template never moves a slot. */
+ *  switching template never moves a slot.
+ *
+ *  Cemented 2026-08-15 from the running editor, replacing the authored
+ *  placeholders. Slot 20 sits between 2 and 3 because that is the order it was
+ *  added in; position in this array carries no meaning now that everything
+ *  looks slots up by id. */
 export const cardSlots: CardSlot[] = [
   { id: 1, name: "HP badge", shape: "circle", kind: "text", x: 0.04996, y: 0.02272, w: 0.15451, h: 0.10544, radii: [50, 50, 49, 50] },
   { id: 2, name: "Name bar", shape: "rect", kind: "text", x: 0.23585, y: 0.03814, w: 0.62382, h: 0.04451 },

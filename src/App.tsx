@@ -9,6 +9,10 @@ import { DEFAULT_BRUSH, type BrushState } from "./paint/brushes";
 import { BrushPanel } from "./paint/BrushPanel";
 import { PaintCanvas, type PaintCanvasHandle } from "./paint/PaintCanvas";
 import "./paint/paint.css";
+import { FillControls } from "./cardstudio/fillcontrols";
+import { FabricFillLayer } from "./cardstudio/fabricfilllayer";
+import { defaultFill, type Fill } from "./cardstudio/types";
+import { buildCardSvg } from "./export/cardSvg";
 
 /** Colour a slot falls back to in the picker before one has been chosen. */
 const DEFAULT_FILL = "#b0c666";
@@ -39,6 +43,10 @@ const CORNER_SIGNS: Record<CornerIndex, [number, number]> = {
 const clampRadius = (r: number) => Math.max(0, Math.min(50, r));
 
 /** Zoom ceiling for close work on outline points. */
+/** The frame artwork is 848x1264; backing the fill canvases at that size keeps
+ *  them pixel-aligned with the art rather than with the 500x710 screen box. */
+const ART_BASE_W = 848;
+const ART_BASE_H = 1264;
 const ZOOM_MAX = 1500;
 /** How far a point travels per unit of finger travel. Below 1 so a full sweep
  *  of the pad is a fraction of the card - the point of the tablet is fine
@@ -116,18 +124,25 @@ const loadSlots = (): CardSlot[] => {
   }
 };
 
-const FILLS_STORAGE_KEY = "card-creator.fills.v1";
+const FILLS_STORAGE_KEY = "card-creator.fills.v2";
+/** v1 held flat hex only. Read it once so an in-progress card survives the
+ *  upgrade to rich fills instead of coming back blank. */
+const FILLS_STORAGE_KEY_V1 = "card-creator.fills.v1";
 
-type FillState = { fill: Record<number, string>; opacity: Record<number, number>; recent: string[] };
+/** A slot is either a flat hex (the fast CSS path, `fill`) or a rich Fill
+ *  rendered on its own fabric canvas (`rich`). Solid never lives in `rich`:
+ *  one source of truth per kind, so the swatch, the recents and the history
+ *  snapshots keep working on plain colours exactly as before. */
+type FillState = { fill: Record<number, string>; opacity: Record<number, number>; recent: string[]; rich: Record<number, Fill> };
 
 /** Colours and opacity persist separately from the slot grid: the grid is
  *  headed for cardSlots.ts once the outlines are cemented, while colours stay
  *  per-card. Same defensive read - anything malformed falls back to empty
  *  rather than throwing on load. */
 const loadFills = (): FillState => {
-  const empty: FillState = { fill: {}, opacity: {}, recent: [] };
+  const empty: FillState = { fill: {}, opacity: {}, recent: [], rich: {} };
   try {
-    const raw = localStorage.getItem(FILLS_STORAGE_KEY);
+    const raw = localStorage.getItem(FILLS_STORAGE_KEY) ?? localStorage.getItem(FILLS_STORAGE_KEY_V1);
     if (!raw) return empty;
     const s = JSON.parse(raw) as Partial<FillState>;
     const colours: Record<number, string> = {};
@@ -139,7 +154,13 @@ const loadFills = (): FillState => {
       if (typeof v === "number" && Number.isFinite(v)) alphas[Number(k)] = Math.max(0, Math.min(100, v));
     }
     const recent = Array.isArray(s?.recent) ? s.recent.filter((c) => typeof c === "string" && HEX_RE.test(c)).slice(0, 8) : [];
-    return { fill: colours, opacity: alphas, recent };
+    const rich: Record<number, Fill> = {};
+    for (const [k, v] of Object.entries(s?.rich ?? {})) {
+      // Anything without a recognised kind is dropped rather than handed to
+      // fabric, which would throw mid-render and blank the whole card.
+      if (v && typeof v === "object" && typeof (v as Fill).kind === "string") rich[Number(k)] = v as Fill;
+    }
+    return { fill: colours, opacity: alphas, recent, rich };
   } catch {
     return empty;
   }
@@ -217,7 +238,7 @@ type LayerId =
   | "frame";
 
 type ThemeKey = "verdant" | "obsidian" | "arcane" | "ember";
-type ExportFormat = "png" | "jpg";
+type ExportFormat = "png" | "jpg" | "svg";
 
 type Layer = {
   id: LayerId;
@@ -376,6 +397,22 @@ function App() {
   /** Per-slot fill opacity, 0-100. Absent means fully opaque. */
   const [slotOpacity, setSlotOpacity] = useState<Record<number, number>>(() => loadFills().opacity);
   const opacityOf = (id: number) => slotOpacity[id] ?? 100;
+  /** Gradient/pattern/texture/image fills, rendered on a fabric canvas per
+   *  slot. Only slots that actually have one pay for a canvas. */
+  const [slotRich, setSlotRich] = useState<Record<number, Fill>>(() => loadFills().rich);
+  const richOf = (id: number) => slotRich[id];
+  const setRich = (id: number, next: Fill) => {
+    // Dropping back to Solid hands the slot to the CSS path and tears the
+    // canvas down, so the two paths can never paint the same slot at once.
+    if (next.kind === "solid") {
+      if (next.color) setSlotColor(id, next.color);
+      setSlotRich((prev) => { const { [id]: _drop, ...rest } = prev; return rest; });
+      return;
+    }
+    setSlotRich((prev) => ({ ...prev, [id]: next }));
+  };
+  const clearRich = (id: number) =>
+    setSlotRich((prev) => { const { [id]: _drop, ...rest } = prev; return rest; });
   /* Look slots up by id, never by array position. The artwork mask and the
      subtitle used slots[4] / slots[1], which silently pointed at the wrong
      slot the moment anything was inserted ahead of them. */
@@ -759,9 +796,9 @@ function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(FILLS_STORAGE_KEY, JSON.stringify({ fill: slotFill, opacity: slotOpacity, recent: recentColors }));
+      localStorage.setItem(FILLS_STORAGE_KEY, JSON.stringify({ fill: slotFill, opacity: slotOpacity, recent: recentColors, rich: slotRich }));
     } catch { /* colours just won't survive a reload */ }
-  }, [slotFill, slotOpacity, recentColors]);
+  }, [slotFill, slotOpacity, recentColors, slotRich]);
 
   const resetSlots = () => {
     try { localStorage.removeItem(SLOTS_STORAGE_KEY); } catch { /* nothing to undo */ }
@@ -1173,7 +1210,47 @@ function App() {
     flash(`${cardTemplates[next].name} applied`);
   };
 
+  const cardFileName = () =>
+    cardName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "forged-card";
+
+  /* Vector export does not go through html-to-image at all. That path
+     screenshots the DOM, so "SVG" from it would be a <foreignObject> wrapper
+     around a bitmap - scalable in name only. This rebuilds the printable card
+     from the slot grid as real paths and live text instead. */
+  const exportSvg = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    setExportOpen(false);
+    try {
+      const svg = await buildCardSvg({
+        width: ART_BASE_W,
+        height: ART_BASE_H,
+        templateSrc: templateSrc(cardTemplates[templateIndex]),
+        slots,
+        fill: slotFill,
+        opacity: slotOpacity,
+        rich: slotRich,
+        images: artUrl ? { 5: artUrl } : {},
+        text: { 1: health, 2: cardName, 3: rank },
+        subtitle: cardSubtitle,
+      });
+      const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+      const link = document.createElement("a");
+      link.download = `${cardFileName()}.svg`;
+      link.href = url;
+      link.click();
+      // Revoking straight away can beat the download on some browsers.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      flash("Vector SVG exported");
+    } catch {
+      flash("SVG export failed. Check the frame image loaded.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const exportCard = async () => {
+    if (exportFormat === "svg") return exportSvg();
     if (!cardRef.current || isExporting) return;
     setIsExporting(true);
     setExportOpen(false);
@@ -1190,7 +1267,7 @@ function App() {
         ? await toJpeg(cardRef.current, { ...options, quality: 0.96 })
         : await toPng(cardRef.current, options);
       const link = document.createElement("a");
-      link.download = `${cardName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "forged-card"}.${exportFormat}`;
+      link.download = `${cardFileName()}.${exportFormat}`;
       link.href = dataUrl;
       link.click();
       flash(`High-resolution ${exportFormat.toUpperCase()} exported`);
@@ -1370,9 +1447,9 @@ function App() {
             {exportOpen && (
               <div className="export-menu">
                 <p>EXPORT FORMAT</p>
-                {(["png", "jpg"] as ExportFormat[]).map((format) => (
+                {(["png", "jpg", "svg"] as ExportFormat[]).map((format) => (
                   <button key={format} onClick={() => setExportFormat(format)}>
-                    <span>{format.toUpperCase()} <small>{format === "png" ? "Transparent-ready" : "Smaller file"}</small></span>
+                    <span>{format.toUpperCase()} <small>{format === "png" ? "Transparent-ready" : format === "jpg" ? "Smaller file" : "Vector, print-ready"}</small></span>
                     {exportFormat === format && <Check size={15} />}
                   </button>
                 ))}
@@ -1552,6 +1629,27 @@ function App() {
                     </svg>
                   );
                 })}
+
+                {/* Rich fills paint on their own fabric canvas, positioned on
+                    the slot's box and clipped to the very same outline the
+                    button draws. Backed at the art's native 848x1264 so the
+                    fill stays sharp at 1000% zoom and through export, while
+                    CSS scales it to the slot. */}
+                {slots.filter((s) => slotRich[s.id]).map((slot) => (
+                  <div
+                    key={`rich-${slot.id}`}
+                    className="slot-rich-fill"
+                    style={{ ...slotStyle({ ...slot, points: undefined }), opacity: opacityOf(slot.id) / 100 }}
+                    aria-hidden="true"
+                  >
+                    <FabricFillLayer
+                      slot={slot}
+                      fill={slotRich[slot.id]}
+                      width={Math.max(2, Math.round(slot.w * ART_BASE_W))}
+                      height={Math.max(2, Math.round(slot.h * ART_BASE_H))}
+                    />
+                  </div>
+                ))}
 
                 {slots.map((slot) => {
                   const rawFill = slotFill[slot.id];
@@ -1979,10 +2077,44 @@ function App() {
 
                     <button
                       className="field-button subtle"
-                      onClick={() => { const c = slotFill[slot.id]; if (c) rememberColor(c); clearSlotColor(slot.id); }}
+                      onClick={() => { const c = slotFill[slot.id]; if (c) rememberColor(c); clearSlotColor(slot.id); clearRich(slot.id); }}
                     >
                       Clear fill
                     </button>
+                  </section>
+
+                  {/* Gradient / pattern / texture / image. Kept in its own
+                      section below the colour wheel so the common case - pick
+                      a colour - stays one click away and does not grow a tab
+                      strip in front of it. */}
+                  <section className="property-section">
+                    <div className="section-label">
+                      <span>ADVANCED FILL</span>
+                      {richOf(slot.id) && (
+                        <button className="inline-eye" title="Back to a plain colour" onClick={() => clearRich(slot.id)}>
+                          <EyeOff size={13} />
+                        </button>
+                      )}
+                    </div>
+                    {richOf(slot.id) ? (
+                      <div className="fill-controls">
+                        <FillControls
+                          fill={richOf(slot.id)!}
+                          onChange={(next) => setRich(slot.id, next)}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        className="field-button"
+                        onClick={() =>
+                          // Seed from the slot's current colour so switching to
+                          // a gradient starts where the card already is.
+                          setRich(slot.id, { ...defaultFill(), kind: "gradient", color: slotFill[slot.id] ?? DEFAULT_FILL, opacity: opacityOf(slot.id) })
+                        }
+                      >
+                        Use gradient, pattern, texture or image
+                      </button>
+                    )}
                   </section>
 
                   <section className="property-section">

@@ -50,7 +50,7 @@ function compileShader(gl: WebGLRenderingContext, type: number, source: string) 
 export function ShaderOverlay({ enabled, intensity = 1 }: { enabled: boolean; intensity?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointerRef = useRef({ x: 0.5, y: 0.5 });
-  const rafRef = useRef<number>();
+  const rafRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!enabled || !canvasRef.current) return;
