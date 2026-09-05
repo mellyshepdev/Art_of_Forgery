@@ -1426,20 +1426,10 @@ function App() {
           ) : (
             <>
               <div className="layer-stack">
-                {layers.map((layer) => (
-                  <button key={layer.id} className={`layer-row ${selectedLayer === layer.id ? "is-active" : ""}`} onClick={() => selectLayer(layer.id)}>
-                    <span className="layer-number">{layer.number}</span>
-                    <span className="layer-copy"><strong>{layer.label}</strong><small>{layer.helper}</small></span>
-                    <span
-                      className="visibility-toggle"
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`${visibility[layer.id] ? "Hide" : "Show"} ${layer.label}`}
-                      onClick={(event) => { event.stopPropagation(); toggleVisibility(layer.id); }}
-                      onKeyDown={(event) => { if (event.key === "Enter") toggleVisibility(layer.id); }}
-                    >
-                      {visibility[layer.id] ? <Eye size={14} /> : <EyeOff size={14} />}
-                    </span>
+                {slots.map((slot) => (
+                  <button key={slot.id} className={`layer-row ${selectedSlot === slot.id ? "is-active" : ""}`} onClick={() => pickSlot(slot.id)}>
+                    <span className="layer-number">{slot.id.toString().padStart(2, "0")}</span>
+                    <span className="layer-copy"><strong>{slot.name}</strong><small>{slot.shape} - {slot.kind}</small></span>
                   </button>
                 ))}
               </div>

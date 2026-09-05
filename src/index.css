@@ -5,7 +5,9 @@
      rule below subtracts it: .workspace was calc(100vh - 62px), written when
      App owned the whole viewport, so adding the strip pushed the bottom of the
      page (and the buttons sitting in it) off-screen by exactly this much. */
-  --mode-nav-h: 30px;
+  --mode-nav-h: 25px;
+  --panel-w: 280px;
+  --topbar-h: 46px;
   color: #e9ece9;
   background: #101312;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -28,7 +30,7 @@ button { color: inherit; }
   display: grid;
   grid-template-columns: 246px 1fr auto;
   align-items: center;
-  height: 62px;
+  height: var(--topbar-h);
   border-bottom: 1px solid #292e2b;
   background: #151816;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
@@ -42,6 +44,7 @@ button { color: inherit; }
   position: relative;
   z-index: 30;
   display: flex;
+  justify-content: center;
   align-items: center;
   gap: 3px;
   height: var(--mode-nav-h);
@@ -163,7 +166,7 @@ button { color: inherit; }
 
 .avatar { width: 31px; height: 31px; margin-left: 5px; border: 1px solid #5e655d; border-radius: 50%; color: #ced5d0; background: #333934; font-size: 10px; font-weight: 700; cursor: pointer; }
 
-.workspace { display: grid; grid-template-columns: 246px minmax(480px, 1fr) 312px; height: calc(100vh - var(--mode-nav-h) - 62px); }
+.workspace { display: grid; grid-template-columns: 246px minmax(480px, 1fr) 312px; height: calc(100vh - var(--mode-nav-h) - var(--topbar-h)); }
 .layers-panel, .properties-panel { position: relative; z-index: 12; min-height: 0; background: #171a18; }
 .layers-panel { display: grid; grid-template-rows: 47px 1fr 49px; border-right: 1px solid #2a2f2c; }
 .panel-heading, .section-label, .properties-title, .layers-footer, .properties-footer { display: flex; align-items: center; justify-content: space-between; }
@@ -511,7 +514,7 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
   .topbar { position: sticky; top: 0; grid-template-columns: 190px 1fr; }
   .project-crumbs { display: none; }
   .top-actions { justify-content: flex-end; }
-  .workspace { grid-template-columns: 66px minmax(420px, 1fr) 272px; height: calc(100vh - var(--mode-nav-h) - 62px); }
+  .workspace { grid-template-columns: 66px minmax(420px, 1fr) 272px; height: calc(100vh - var(--mode-nav-h) - var(--topbar-h)); }
   .panel-heading { justify-content: center; padding: 0; }
   .panel-heading span, .panel-heading button, .layer-copy, .visibility-toggle, .layers-footer button:first-child { display: none; }
   .layer-row { grid-template-columns: 1fr; min-height: 51px; place-items: center; }
@@ -1051,3 +1054,165 @@ input[type="range"] { width: 100%; height: 3px; margin: 3px 0 14px; accent-color
   cursor: pointer;
 }
 .fs-check input { accent-color: #b0c666; }
+
+
+/* --- canvas/3d toolbar normalisation --- */
+/* FreeCanvasMode and ThreeDMode now use .canvas-toolbar for the shell. These
+   rules bring the controls they carry into line with the card page: same
+   heights, same greys, the studio accent instead of emerald/indigo, and no
+   font-mono. Scoped so only these toolbars are affected. */
+.canvas-toolbar label,
+.canvas-toolbar > button,
+.canvas-toolbar > div > button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #b4bbb6;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+
+.canvas-toolbar label:hover,
+.canvas-toolbar > button:hover,
+.canvas-toolbar > div > button:hover {
+  color: #e4e8e3;
+  background: #232823;
+}
+
+/* The upload actions (Import Images / Load .GLTF) are the one emphasised
+   control, so they get the studio accent rather than emerald/indigo. */
+.canvas-toolbar label {
+  color: #c8dc82;
+  border-color: #55603c;
+  background: linear-gradient(145deg, #27301d, #171b15);
+}
+.canvas-toolbar label:hover { color: #d9ec93; background: linear-gradient(145deg, #2e3922, #1b2018); }
+
+/* Active gizmo / toggle states: studio accent, not indigo. */
+.canvas-toolbar button[class*="bg-indigo"],
+.canvas-toolbar button[class*="bg-emerald"] {
+  color: #c8dc82;
+  border-color: #55603c;
+  background: linear-gradient(145deg, #27301d, #171b15);
+}
+
+/* Nested groups (the 3D gizmo cluster) lose their own card so they read as
+   part of one bar rather than a box inside a box. */
+.canvas-toolbar > div[class*="rounded-lg"] {
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* The 1px dividers. */
+.canvas-toolbar > div[class*="w-px"] {
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: #343a36;
+}
+
+/* Zoom percentage readout - tabular figures, studio grey, no font-mono. */
+.canvas-toolbar > span {
+  min-width: 44px;
+  color: #b4bbb6;
+  font-family: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.canvas-toolbar svg { width: 15px; height: 15px; }
+
+
+/* --- canvas/3d panel parity --- */
+/* Canvas and 3D now use the card page's panel furniture. They render without
+   App's 62px topbar, so their workspace claims that height back - which is why
+   this is not just .workspace. */
+.mode-workspace {
+  position: relative;
+  display: flex;
+  height: calc(100vh - var(--mode-nav-h));
+  overflow: hidden;
+  background: #111412;
+  color: #e4e8e3;
+  user-select: none;
+}
+.mode-workspace > .layers-panel { flex: 0 0 246px; }
+.mode-workspace > .properties-panel { flex: 0 0 312px; display: flex; flex-direction: column; overflow-y: auto; }
+/* Whatever sits between the two panels is the canvas surface. */
+.mode-workspace > *:not(.layers-panel):not(.properties-panel):not(.canvas-toolbar) {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+/* Centre the floating toolbar over the canvas, not the whole workspace. */
+.mode-workspace .canvas-toolbar { left: calc(246px + (100% - 246px - 312px) / 2); }
+
+.panel-empty { margin: 10px 11px; color: #6b736e; font-size: 10px; }
+.panel-count { color: #68706b; font-size: 9px; font-variant-numeric: tabular-nums; }
+
+/* Normalise the Tailwind children these modes bring into .properties-panel so
+   the right-hand column reads like the card page's. */
+.mode-workspace .properties-panel h3 { color: #e0e4e1; font-size: 11px; font-weight: 620; }
+.mode-workspace .properties-panel [class*="text-zinc-"] { color: #9aa29c; }
+.mode-workspace .properties-panel [class*="text-emerald-"],
+.mode-workspace .properties-panel [class*="text-indigo-"] { color: #c8dc82; }
+.mode-workspace .properties-panel [class*="border-zinc-"] { border-color: #292e2b; }
+.mode-workspace .properties-panel [class*="bg-zinc-9"],
+.mode-workspace .properties-panel [class*="bg-zinc-8"] { background: transparent; }
+.mode-workspace .properties-panel label { color: #8c948e; font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; }
+.mode-workspace .properties-panel input[type="range"] { accent-color: #c8dc82; }
+.mode-workspace .properties-panel button[class*="bg-emerald"],
+.mode-workspace .properties-panel button[class*="bg-indigo"] {
+  color: #c8dc82;
+  border: 1px solid #55603c;
+  background: linear-gradient(145deg, #27301d, #171b15);
+}
+
+
+/* --- slot panel: two columns, equal panel widths --- */
+/* Both side columns the same width. .workspace hardcoded 246px left / 312px
+   right; the Canvas and 3D panels inherit the same variable so all three pages
+   match. */
+.workspace { grid-template-columns: var(--panel-w) minmax(360px, 1fr) var(--panel-w); }
+.mode-workspace > .layers-panel,
+.mode-workspace > .properties-panel { flex: 0 0 var(--panel-w); }
+/* With equal panels the workspace midpoint is the canvas midpoint, so the
+   floating toolbar needs no offset - undo the asymmetric correction. */
+.mode-workspace .canvas-toolbar { left: 50%; }
+
+/* Twenty slots as two columns of ten. Scoped to .workspace: the Canvas and 3D
+   left panels hold a handful of rows and stay single-column. */
+.workspace .layer-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  align-content: start;
+}
+.workspace .layer-stack .layer-row {
+  grid-template-columns: 22px 1fr;
+  gap: 6px;
+  min-height: 38px;
+  padding: 5px 6px;
+}
+.workspace .layer-stack .layer-copy { gap: 1px; }
+.workspace .layer-stack .layer-copy strong { font-size: 10px; }
+/* The "circle - image" sub-label does not fit in a half-width row; the shape
+   and kind are still visible on the card overlay and in the properties panel. */
+.workspace .layer-stack .layer-copy small { display: none; }
+.workspace .layer-stack .layer-row.is-active::before { left: -4px; }
+
+@media (max-width: 1500px) {
+  .workspace { grid-template-columns: var(--panel-w) minmax(320px, 1fr) var(--panel-w); }
+}

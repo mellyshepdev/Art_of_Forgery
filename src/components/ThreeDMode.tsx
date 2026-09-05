@@ -381,8 +381,45 @@ export const ThreeDMode: React.FC<ThreeDModeProps> = ({ state, setState }) => {
   };
 
   return (
-    <div className="flex flex-1 h-full w-full overflow-hidden bg-zinc-950 text-zinc-100 relative select-none">
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-zinc-800/90 backdrop-blur-md p-2 rounded-xl border border-zinc-700/60 shadow-xl">
+    <div className="mode-workspace">
+      <aside className="layers-panel">
+        <div className="panel-heading"><span>SCENE</span></div>
+        <div className="layer-stack">
+          {([
+            { k: "translate", n: "Move", d: "Translate gizmo" },
+            { k: "rotate", n: "Rotate", d: "Rotate gizmo" },
+            { k: "scale", n: "Scale", d: "Scale gizmo" },
+          ] as const).map((m, i) => (
+            <button
+              key={m.k}
+              className={`layer-row ${state.gizmoMode === m.k ? "is-active" : ""}`}
+              onClick={() => setState((s) => ({ ...s, gizmoMode: m.k }))}
+            >
+              <span className="layer-number">{String(i + 1).padStart(2, "0")}</span>
+              <span className="layer-copy"><strong>{m.n}</strong><small>{m.d}</small></span>
+            </button>
+          ))}
+          <button
+            className={`layer-row ${state.wireframe ? "is-active" : ""}`}
+            onClick={() => setState((s) => ({ ...s, wireframe: !s.wireframe }))}
+          >
+            <span className="layer-number">04</span>
+            <span className="layer-copy"><strong>Wireframe</strong><small>{state.wireframe ? "on" : "off"}</small></span>
+          </button>
+          <button
+            className={`layer-row ${state.shadowsEnabled ? "is-active" : ""}`}
+            onClick={() => setState((s) => ({ ...s, shadowsEnabled: !s.shadowsEnabled }))}
+          >
+            <span className="layer-number">05</span>
+            <span className="layer-copy"><strong>Shadows</strong><small>{state.shadowsEnabled ? "on" : "off"}</small></span>
+          </button>
+        </div>
+        <div className="layers-footer">
+          <button onClick={() => setState((s) => ({ ...s, gizmoMode: "translate" }))}>Reset gizmo</button>
+        </div>
+      </aside>
+
+      <div className="canvas-toolbar">
         <label className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg cursor-pointer text-xs font-semibold transition">
           <Upload size={15} />
           <span>Load .GLTF / .GLB</span>
@@ -453,7 +490,7 @@ export const ThreeDMode: React.FC<ThreeDModeProps> = ({ state, setState }) => {
 
       <div ref={mountRef} className="flex-1 h-full w-full relative" />
 
-      <div className="w-80 border-l border-zinc-800 bg-zinc-900/95 backdrop-blur flex flex-col h-full z-10 shadow-2xl overflow-y-auto">
+      <div className="properties-panel">
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sliders size={18} className="text-indigo-400" />

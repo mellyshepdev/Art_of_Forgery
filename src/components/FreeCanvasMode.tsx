@@ -325,8 +325,28 @@ export const FreeCanvasMode: React.FC<FreeCanvasModeProps> = ({
   };
 
   return (
-    <div className="flex flex-1 h-full w-full overflow-hidden bg-zinc-900 text-zinc-100 relative select-none">
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-zinc-800/90 backdrop-blur-md p-2 rounded-xl border border-zinc-700/60 shadow-xl">
+    <div className="mode-workspace">
+      <aside className="layers-panel">
+        <div className="panel-heading"><span>IMAGES</span><span className="panel-count">{images.length}</span></div>
+        <div className="layer-stack">
+          {images.length === 0 && <p className="panel-empty">Nothing imported yet.</p>}
+          {images.map((img, i) => (
+            <button
+              key={img.id}
+              className={`layer-row ${selectedId === img.id ? "is-active" : ""}`}
+              onClick={() => setSelectedId(img.id)}
+            >
+              <span className="layer-number">{String(i + 1).padStart(2, "0")}</span>
+              <span className="layer-copy"><strong>{img.name}</strong><small>image</small></span>
+            </button>
+          ))}
+        </div>
+        <div className="layers-footer">
+          <button onClick={() => setSelectedId(null)}>Deselect</button>
+        </div>
+      </aside>
+
+      <div className="canvas-toolbar">
         <label className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg cursor-pointer text-xs font-semibold transition">
           <Upload size={15} />
           <span>Import Images</span>
@@ -482,7 +502,7 @@ export const FreeCanvasMode: React.FC<FreeCanvasModeProps> = ({
         )}
       </div>
 
-      <div className="w-80 border-l border-zinc-800 bg-zinc-900/95 backdrop-blur flex flex-col h-full z-10 shadow-2xl">
+      <div className="properties-panel">
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sliders size={18} className="text-emerald-400" />
